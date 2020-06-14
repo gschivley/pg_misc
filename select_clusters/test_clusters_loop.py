@@ -152,6 +152,10 @@ def make_region_data(technology, region):
         profiles = pd.read_parquet(
             PROFILE_PATHS[technology], use_pandas_metadata=True, filters=filters
         )
+    elif tech == "OffShoreWind":
+        profiles = pd.read_parquet(PROFILE_PATHS[technology]).query(
+            "prefSite==1 & turbineType=='floating'"
+        )
     else:
         profiles = pd.read_parquet(PROFILE_PATHS[technology])
     format_profiles_inplace(profiles)
@@ -178,8 +182,8 @@ def make_region_data(technology, region):
     return tab1, tab2
 
 
-PARALLEL = False
-USE_IP = True
+PARALLEL = True
+USE_IP = False
 # ---- Processing ----
 spur_line = pd.DataFrame()
 resource_variability = pd.DataFrame()
@@ -227,6 +231,10 @@ for tech in SCENARIOS:
                 ]
                 profiles = pd.read_parquet(
                     PROFILE_PATHS[technology], use_pandas_metadata=True, filters=filters
+                )
+            elif tech == "OffShoreWind":
+                profiles = pd.read_parquet(PROFILE_PATHS[technology]).query(
+                    "prefSite==1 & turbineType=='floating'"
                 )
             else:
                 profiles = pd.read_parquet(PROFILE_PATHS[technology])
