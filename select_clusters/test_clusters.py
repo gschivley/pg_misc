@@ -101,22 +101,17 @@ SCENARIOS = {
 
 technology = "UtilityPV"
 region = "CA_N"
+scenario = SCENARIOS[technology][region]
 
 # Prepare resource metadata and profiles
 metadata = pd.read_csv(METADATA_PATHS[technology]).pipe(
     format_metadata, cap_multiplier=CAPACITY_MULTIPLIER[technology], by="lcoe"
 )
-# profiles = pd.read_parquet(PROFILE_PATHS[technology])
 profiles = pd.read_parquet(PROFILE_PATHS[technology])
-# profiles["IPM_Region"] = profiles["IPM_Region"].astype("category")
-# profiles["cbsa_id"] = profiles["cbsa_id"].astype("category")
-scenario = SCENARIOS[technology][region]
 profiles = profiles.loc[profiles.IPM_Region.isin(scenario["ipm_regions"]), :]
-
 format_profiles_inplace(profiles)
 
 # Build clusters
-
 clusters = build_clusters(metadata, **scenario)
 
 # Build cluster profiles
