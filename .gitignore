@@ -4,3 +4,4 @@
 *.csv
 *.parquet
 !RUC*
+__pycache__
