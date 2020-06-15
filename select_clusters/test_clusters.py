@@ -107,8 +107,14 @@ scenario = SCENARIOS[technology][region]
 metadata = pd.read_csv(METADATA_PATHS[technology]).pipe(
     format_metadata, cap_multiplier=CAPACITY_MULTIPLIER[technology], by="lcoe"
 )
-profiles = pd.read_parquet(PROFILE_PATHS[technology])
-profiles = profiles.loc[profiles.IPM_Region.isin(scenario["ipm_regions"]), :]
+profiles = pd.read_parquet(
+    PROFILE_PATHS[technology],
+    engine="pyarrow",
+    filters=[[("IPM_Region", "=", region)] for region in scenario["ipm_regions"]],
+    # NOTE: Needed for unpartitioned datasets
+    # https://arrow.apache.org/docs/python/generated/pyarrow.parquet.ParquetDataset.html
+    use_legacy_dataset=False
+)
 format_profiles_inplace(profiles)
 
 # Build clusters
