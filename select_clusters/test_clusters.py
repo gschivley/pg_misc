@@ -1,5 +1,4 @@
 import pandas as pd
-import dask.dataframe as dd
 from clusters import (
     format_metadata,
     format_profiles_inplace,
