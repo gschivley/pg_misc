@@ -15,13 +15,11 @@ CWD = Path.cwd()
 
 METADATA_PATHS = {
     "OnshoreWind": CWD.parent / "wind_base_cluster_metadata.csv",
-    # "OnshoreWind": CWD.parent / "preliminary_base_wind_metadata.csv",
     "UtilityPV": CWD.parent / "solarpv_base_cluster_metadata.csv",
 }
 
 PROFILE_PATHS = {
     "OnshoreWind": CWD.parent / "wind_base_cluster_profiles.parquet",
-    # "OnshoreWind": CWD.parent / "preliminary_base_wind_cluster_profiles.parquet",
     "UtilityPV": CWD.parent / "solarpv_base_cluster_profiles.parquet",
 }
 
