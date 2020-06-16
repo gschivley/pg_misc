@@ -8,6 +8,8 @@ from joblib import Parallel, delayed
 import typer
 import shapely
 import logging
+import json
+import re
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -26,11 +28,46 @@ VCE_DATA_PATH = Path("/Volumes/Macintosh HD 1/Updated_Princeton_Data")
 VCE_WIND_PATH = VCE_DATA_PATH / "PRINCETON-Wind-Data-2012"
 VCE_SOLAR_PATH = VCE_DATA_PATH / "PRINCETON-Solar-Data-2012"
 
+  
+def snake(s: str) -> str:
+    """
+    Convert variable name to snake case.
+    
+    Example:
+        >>> snake('Area')
+        'area'
+        >>> snake('turbineType')
+        'turbine_type'
+        >>> snake('GW')
+        'gw'
+        >>> snake('IPM_Region')
+        'ipm_region'
+        >>> snake('d_coast_sub_161kVplus_miles')
+        'd_coast_sub_161kvplus_miles'
+    """
+    if '_' in s:
+        return s.lower()
+    else:
+        return re.sub(r"([a-z])([A-Z])", r"\1_\2", s).lower()
+
+
+def snake_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Convert column names to snake case.
+
+    Example:
+        >>> df = pd.DataFrame([{'Area': 1, 'turbineType': True}])
+        >>> snake_columns(df)
+           area  turbine_type
+        0     1          True
+    """
+    return df.rename(columns={name: snake(name) for name in df.columns})
+
 
 def load_site_locations(folder=Path.cwd()):
 
-    site_locations = pd.read_csv(folder / "RUC_LatLonSites.csv", dtype={"Site": str})
-    site_locations["Site"] = site_locations["Site"].str.zfill(6)
+    site_locations = pd.read_csv(folder / "RUC_LatLonSites.csv", dtype={"Site": str}).pipe(snake_columns)
+    site_locations["site"] = site_locations["site"].str.zfill(6)
 
     return site_locations
 
@@ -44,7 +81,7 @@ def add_cluster_labels(df, clusters=range(1, 51), lcoe_col="lcoe"):
     return df
 
 
-def cluster_weighted_avg_profile(df, site_profiles, cluster_index, weight_col="Area"):
+def cluster_weighted_avg_profile(df, site_profiles, cluster_index, weight_col="area"):
     """Calculate the average CF in each hour, weighted by land area of each site
 
     Parameters
@@ -64,7 +101,7 @@ def cluster_weighted_avg_profile(df, site_profiles, cluster_index, weight_col="A
         A single row dataframe with hourly capacity factors from 0-1.
     """
     cluster_wm = np.average(
-        site_profiles.loc[df["Site"], :], weights=df[weight_col], axis=0
+        site_profiles.loc[df["site"], :], weights=df[weight_col], axis=0
     )
 
     # Convert from 0-100 CF values down to 0-1 CF
@@ -77,13 +114,12 @@ def cluster_weighted_avg_profile(df, site_profiles, cluster_index, weight_col="A
 
 
 def load_gen_profiles(site_list, resource_type, variable, scenario):
-    if resource_type.lower() == "wind":
+    resource_type = resource_type.lower()
+    scenario = scenario.lower()
+    if resource_type in ("wind", "offshorewind"):
         resource = "Wind"
         resource_path = VCE_WIND_PATH
-    elif resource_type.lower() == "offshorewind":
-        resource = "Wind"
-        resource_path = VCE_WIND_PATH
-    elif resource_type.lower() == "solarpv":
+    elif resource_type == "solarpv":
         resource = "SolarPV"
         resource_path = VCE_SOLAR_PATH
 
@@ -117,14 +153,14 @@ def renorm_solar(df):
     return df
 
 
-def wa_column(df, value_col, weight_col="Area"):
+def wa_column(df, value_col, weight_col="area"):
 
     wa = np.average(df[value_col], axis=0, weights=df[weight_col])
 
     return pd.Series(wa)
 
 
-def wa_rmse(df, lcoe_col, weight_col="Area"):
+def wa_rmse(df, lcoe_col, weight_col="area"):
 
     wa = mean_squared_error(
         df[lcoe_col],
@@ -136,9 +172,7 @@ def wa_rmse(df, lcoe_col, weight_col="Area"):
 
 
 def load_lcoe_data(path):
-    cpa_lcoe = pd.read_csv(path, dtype={"Site": str})
-
-    return cpa_lcoe
+    return pd.read_csv(path, dtype={"Site": str}).pipe(snake_columns)
 
 
 def make_clusters_tidy(cluster_df, additional_cluster_cols=[]):
@@ -153,12 +187,12 @@ def make_clusters_tidy(cluster_df, additional_cluster_cols=[]):
         "tx_miles",
         "interconnect_annuity",
         "m_popden",
-        "GW",
+        "gw",
     ]
     keep_cols = [col for col in keep_cols if col in cluster_df.columns]
     id_vars = (
         additional_cluster_cols
-        + ["IPM_Region", "cbsa_id", "cpa_id", "Site", "lcoe", "Area",]
+        + ["ipm_region", "cbsa_id", "cpa_id", "site", "lcoe", "area",]
         + keep_cols
     )
 
@@ -186,29 +220,29 @@ def make_cluster_metadata(
     gw_filter=0.5,
 ):
     group_cols = [
-        "IPM_Region",
+        "ipm_region",
         "cbsa_id",
         "cluster_level",
         "cluster",
     ] + additional_group_cols
     logger.info("weighted lcoe")
     clustered_meta = tidy_clustered.groupby(group_cols).apply(
-        wa_column, value_col="lcoe", weight_col="Area"
+        wa_column, value_col="lcoe", weight_col="area"
     )
     clustered_meta.columns = ["lcoe"]
 
-    sum_cols = ["Area", "GW"]
+    sum_cols = ["area", "gw"]
     clustered_meta[sum_cols] = tidy_clustered.groupby(group_cols)[sum_cols].sum()
 
     # if resource_type == "offshorewind":
     #     clustered_meta
-    # clustered_meta["GW"] = clustered_meta["Area"] * resource_mw_km2 / 1000
+    # clustered_meta["gw"] = clustered_meta["area"] * resource_mw_km2 / 1000
 
     avg_std_capacity = (
         clustered_meta.reset_index()
-        .groupby(["cbsa_id", "cluster_level"], as_index=False)["GW"]
+        .groupby(["cbsa_id", "cluster_level"], as_index=False)["gw"]
         .sum()
-        .groupby("cbsa_id")["GW"]
+        .groupby("cbsa_id")["gw"]
         .std()
         .mean()
     )
@@ -242,14 +276,14 @@ def make_cluster_metadata(
     clustered_meta["meets_criteria"] = False
     clustered_meta.loc[
         (clustered_meta["relative_rmse"] <= relative_rmse_filter)
-        | (clustered_meta["GW"] <= gw_filter),
+        | (clustered_meta["gw"] <= gw_filter),
         "meets_criteria",
     ] = True
 
     logger.info("Filtering metadata clusters")
     df_list = []
     for _, _df in clustered_meta.groupby(
-        ["IPM_Region", "cbsa_id", "cluster_level"] + additional_group_cols
+        ["ipm_region", "cbsa_id", "cluster_level"] + additional_group_cols
     ):
         if len(_df) > _df["meets_criteria"].sum():
             df_list.append(_df)
@@ -263,7 +297,7 @@ def make_weighted_profiles(
     tidy_clustered, cluster_meta, site_profiles, additional_group_cols=[], n_jobs=-2
 ):
     group_cols = [
-        "IPM_Region",
+        "ipm_region",
         "cbsa_id",
         "cluster_level",
         "cluster",
@@ -284,9 +318,9 @@ def make_weighted_profiles(
     wa_profiles.index = wa_profiles.index.rename(group_cols)
 
     filtered_wa_profiles = wa_profiles  # .loc[cluster_meta.index, :]
-    logger.info("Making IPM Region a category")
+    logger.info("Making IPM region a category")
     filtered_wa_profiles = filtered_wa_profiles.reset_index()
-    filtered_wa_profiles["IPM_Region"] = filtered_wa_profiles["IPM_Region"].astype(
+    filtered_wa_profiles["ipm_region"] = filtered_wa_profiles["ipm_region"].astype(
         "category"
     )
 
@@ -300,7 +334,7 @@ def make_weighted_profiles(
 
     logger.info("Sort tidy profiles")
     sort_cols = additional_group_cols + [
-        "IPM_Region",
+        "ipm_region",
         "cbsa_id",
         "cluster_level",
         "cluster",
@@ -325,7 +359,7 @@ def set_final_spur_columns(cpa_lcoe, resource_type):
         ]
         cpa_lcoe.loc[direct_capex < indirect_capex, "tx_miles"] = 0
     else:
-        cpa_lcoe["spur_miles"] = cpa_lcoe["d_coast_sub_161kVplus_miles"]
+        cpa_lcoe["spur_miles"] = cpa_lcoe["d_coast_sub_161kvplus_miles"]
         cpa_lcoe["offshore_spur_miles"] = cpa_lcoe["d_coast_miles"]
         cpa_lcoe["tx_miles"] = cpa_lcoe["d_sub_load_metro_750k_center_miles"]
 
@@ -335,18 +369,16 @@ def set_final_spur_columns(cpa_lcoe, resource_type):
 def set_cpa_capacity(cpa_lcoe, resource_type, resource_density):
 
     if resource_type == "offshorewind":
-        cpa_lcoe["GW"] = (
-            cpa_lcoe["Area"] * cpa_lcoe["turbineType"].map(resource_density) / 1000
+        cpa_lcoe["gw"] = (
+            cpa_lcoe["area"] * cpa_lcoe["turbine_type"].map(resource_density) / 1000
         )
     else:
-        cpa_lcoe["GW"] = cpa_lcoe["Area"] * resource_density[resource_type] / 1000
+        cpa_lcoe["gw"] = cpa_lcoe["area"] * resource_density[resource_type] / 1000
 
     return cpa_lcoe
 
 
 def format_metadata(df, by="lcoe"):
-    # Convert all column names to lowercase
-    df.columns = [name.lower() for name in df.columns]
     # Initialize sequential unique cluster id
     cluster_id = 1
     all_clusters = []
@@ -412,7 +444,7 @@ def main(
     }
 
     if resource_type == "offshorewind":
-        additional_group_cols = ["turbineType", "prefSite"]
+        additional_group_cols = ["turbine_type", "pref_site"]
     else:
         additional_group_cols = []
 
@@ -431,73 +463,88 @@ def main(
 
     logger.info("LCOE loaded, calculating cluster labels")
     cpa_lcoe_cluster_labels = cpa_lcoe.groupby(
-        ["IPM_Region", "cbsa_id"] + additional_group_cols
+        ["ipm_region", "cbsa_id"] + additional_group_cols
     ).apply(
         add_cluster_labels, clusters=range(1, max_cluster_levels + 1), lcoe_col="lcoe"
     )
 
     logger.info("Making clusters tidy")
-
     tidy_clustered = make_clusters_tidy(cpa_lcoe_cluster_labels, additional_group_cols)
 
-    logger.info("Making cluster metadata")
+    if additional_group_cols:
+        grouped = tidy_clustered.groupby(additional_group_cols, as_index=False)
+        groups = [
+            ({k: v for k, v in zip(additional_group_cols, idx)}, df)
+            for idx, df in grouped
+        ]
+    else:
+        groups = [({}, tidy_clustered)]
 
-    cluster_meta = make_cluster_metadata(
-        tidy_clustered=tidy_clustered,
-        additional_group_cols=additional_group_cols,
-        relative_rmse_filter=relative_rmse_filter,
-        gw_filter=gw_filter,
-    )
-    cols = cluster_meta.index.names
-    cluster_meta = cluster_meta.reset_index().pipe(format_metadata)
+    for group, tidy_clustered in groups:
 
-    logger.info("Writing metadata.")
-    cluster_meta.to_csv(
-        f"{resource_type}_{scenario}_cluster_metadata.csv",
-        float_format="%.4f",
-        index=False,
-    )
-
-    # HACK: Use clusters.format_metadata to drop duplicate clusters
-    cluster_meta = cluster_meta.rename({"ipm_region": "IPM_Region"}, axis=1).set_index(
-        cols
-    )
-    tidy_clustered = (
-        tidy_clustered.set_index(cols).loc[cluster_meta.index].reset_index()
-    )
-
-    if create_profiles:
-        logger.info("Loading site profiles")
-        site_profiles = load_gen_profiles(
-            tidy_clustered["Site"].unique(),
-            resource_type=resource_type,
-            variable=resource_variable[resource_type],
-            scenario=scenario,
+        logger.info(f"Processing group {group}")
+        group = {
+            "technology": resource_type,
+            "scenario": scenario,
+            **group
+        }
+        basename = '_'.join([str(v) for v in group.values()])
+        group_path = f"{basename}_group.json"
+        group["metadata"] = f"{basename}_metadata.csv"
+        group["profiles"] = (
+            f"{basename}_profiles.parquet"
+            if create_profiles
+            else None
         )
 
-        if resource_type == "solarpv":
-            logger.info("Renormalizing solar profiles")
-            site_profiles = renorm_solar(site_profiles)
-
-        logger.info("Making cluster weighted profiles")
-        cluster_profiles = make_weighted_profiles(
-            tidy_clustered,
-            cluster_meta,
-            site_profiles,
+        logger.info("Making cluster metadata")
+        cluster_meta = make_cluster_metadata(
+            tidy_clustered=tidy_clustered,
             additional_group_cols=additional_group_cols,
-            n_jobs=n_jobs,
+            relative_rmse_filter=relative_rmse_filter,
+            gw_filter=gw_filter,
         )
-        cluster_profiles.columns = [name.lower() for name in cluster_profiles.columns]
+        cols = cluster_meta.index.names
+        cluster_meta = cluster_meta.reset_index().pipe(format_metadata)
 
-        logger.info("Writing profiles.")
-        if resource_type == "wind":
-            cluster_profiles.round(4).to_parquet(
-                f"{resource_type}_{scenario}_cluster_profiles.parquet",
-                partition_cols=["ipm_region"],
+        logger.info("Writing metadata")
+        cluster_meta.to_csv(
+            group["metadata"], float_format="%.4f", index=False,
+        )
+        with open(group_path, "w") as fp:
+            json.dump(group, fp, indent=4)
+
+        # HACK: Use clusters.format_metadata to drop duplicate clusters
+        cluster_meta = cluster_meta.set_index(cols)
+        tidy_clustered = (
+            tidy_clustered.set_index(cols).loc[cluster_meta.index].reset_index()
+        )
+
+        if create_profiles:
+            logger.info("Loading site profiles")
+            site_profiles = load_gen_profiles(
+                tidy_clustered["site"].unique(),
+                resource_type=resource_type,
+                variable=resource_variable[resource_type],
+                scenario=scenario,
             )
-        else:
-            cluster_profiles.round(4).to_parquet(
-                f"{resource_type}_{scenario}_cluster_profiles.parquet"
+
+            if resource_type == "solarpv":
+                logger.info("Renormalizing solar profiles")
+                site_profiles = renorm_solar(site_profiles)
+
+            logger.info("Making cluster weighted profiles")
+            cluster_profiles = make_weighted_profiles(
+                tidy_clustered,
+                cluster_meta,
+                site_profiles,
+                additional_group_cols=additional_group_cols,
+                n_jobs=n_jobs,
+            )
+
+            logger.info("Writing profiles")
+            cluster_profiles.drop(columns=additional_group_cols).round(4).to_parquet(
+                group["profiles"], partition_cols=["ipm_region"],
             )
 
 

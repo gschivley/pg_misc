@@ -3,5 +3,6 @@
 /.vscode
 *.csv
 *.parquet
+*.json
 !RUC*
 __pycache__

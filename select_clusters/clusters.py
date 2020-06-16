@@ -26,8 +26,6 @@ def format_metadata_inplace(df, cap_multiplier=None):
 
 
 def format_profiles_inplace(df):
-    # Convert column names to lowercase
-    df.columns = [name.lower() for name in df.columns]
     # Prepare index
     # NOTE: Assumes already sorted by hour (ascending)
     df.set_index(PROFILE_KEYS, inplace=True)
