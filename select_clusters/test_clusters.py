@@ -1,6 +1,6 @@
 import pandas as pd
 from clusters import (
-    format_metadata,
+    format_metadata_inplace,
     format_profiles_inplace,
     build_clusters,
     build_cluster_profiles,
@@ -103,17 +103,18 @@ technology = "UtilityPV"
 region = "CA_N"
 scenario = SCENARIOS[technology][region]
 
-# Prepare resource metadata and profiles
-metadata = pd.read_csv(METADATA_PATHS[technology]).pipe(
-    format_metadata, cap_multiplier=CAPACITY_MULTIPLIER[technology], by="lcoe"
-)
+# Prepare resource metadata
+metadata = pd.read_csv(METADATA_PATHS[technology])
+format_metadata_inplace(metadata, cap_multiplier=CAPACITY_MULTIPLIER[technology])
+
+# Prepare resource profiles
 profiles = pd.read_parquet(
     PROFILE_PATHS[technology],
     engine="pyarrow",
-    filters=[[("IPM_Region", "=", region)] for region in scenario["ipm_regions"]],
+    filters=[[("ipm_region", "=", region)] for region in scenario["ipm_regions"]],
     # NOTE: Needed for unpartitioned datasets
     # https://arrow.apache.org/docs/python/generated/pyarrow.parquet.ParquetDataset.html
-    use_legacy_dataset=False
+    use_legacy_dataset=False,
 )
 format_profiles_inplace(profiles)
 

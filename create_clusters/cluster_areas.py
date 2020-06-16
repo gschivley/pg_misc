@@ -344,6 +344,52 @@ def set_cpa_capacity(cpa_lcoe, resource_type, resource_density):
     return cpa_lcoe
 
 
+def format_metadata(df, by="lcoe"):
+    # Convert all column names to lowercase
+    df.columns = [name.lower() for name in df.columns]
+    # Initialize sequential unique cluster id
+    cluster_id = 1
+    all_clusters = []
+    for cbsa in df["cbsa_id"].unique():
+        sdf = df[df["cbsa_id"] == cbsa]
+        levels = sdf["cluster_level"].drop_duplicates().sort_values(ascending=False)
+        # Start from base clusters
+        clusters = sdf[sdf["cluster_level"] == levels.max()].to_dict(orient="records")
+        for i, x in enumerate(clusters, start=cluster_id):
+            x["id"] = i
+        for level in levels[1:]:
+            parent_id = cluster_id + len(clusters)
+            new = sdf[sdf["cluster_level"] == level]
+            # Old cluster is a child if:
+            # - not already assigned to a parent
+            # - capacity not duplicated in current cluster level
+            children = [
+                x
+                for x in clusters
+                if not x.get("parent_id") and (x[by] != new[by]).all()
+            ]
+            if len(children) != 2:
+                raise ValueError(
+                    f"Found {len(children)} children for level {level} in cbsa_id {cbsa}"
+                )
+            for x in children:
+                x["parent_id"] = parent_id
+            # New cluster is a parent if:
+            # - capacity not present in previous cluster level
+            is_parent = ~new[by].isin(sdf[sdf["cluster_level"] == level + 1][by])
+            if sum(is_parent) == 1:
+                parent = new[is_parent].iloc[0].to_dict()
+                parent["id"] = parent_id
+            else:
+                raise ValueError(
+                    f"Found {sum(is_parent)} parents at level {level} in cbsa_id {cbsa}"
+                )
+            clusters.append(parent)
+        all_clusters.extend(clusters)
+        cluster_id += len(clusters)
+    return pd.DataFrame(all_clusters)
+
+
 def main(
     lcoe_path,
     resource_type="solarpv",
@@ -402,10 +448,22 @@ def main(
         relative_rmse_filter=relative_rmse_filter,
         gw_filter=gw_filter,
     )
+    cols = cluster_meta.index.names
+    cluster_meta = cluster_meta.reset_index().pipe(format_metadata)
 
     logger.info("Writing metadata.")
     cluster_meta.to_csv(
-        f"{resource_type}_{scenario}_cluster_metadata.csv", float_format="%.4f"
+        f"{resource_type}_{scenario}_cluster_metadata.csv",
+        float_format="%.4f",
+        index=False,
+    )
+
+    # HACK: Use clusters.format_metadata to drop duplicate clusters
+    cluster_meta = cluster_meta.rename({"ipm_region": "IPM_Region"}, axis=1).set_index(
+        cols
+    )
+    tidy_clustered = (
+        tidy_clustered.set_index(cols).loc[cluster_meta.index].reset_index()
     )
 
     if create_profiles:
@@ -423,23 +481,19 @@ def main(
 
         logger.info("Making cluster weighted profiles")
         cluster_profiles = make_weighted_profiles(
-            tidy_clustered.set_index(
-                ["IPM_Region", "cbsa_id", "cluster_level", "cluster"]
-                + additional_group_cols
-            )
-            .loc[cluster_meta.index]
-            .reset_index(),
+            tidy_clustered,
             cluster_meta,
             site_profiles,
             additional_group_cols=additional_group_cols,
             n_jobs=n_jobs,
         )
+        cluster_profiles.columns = [name.lower() for name in cluster_profiles.columns]
 
         logger.info("Writing profiles.")
         if resource_type == "wind":
             cluster_profiles.round(4).to_parquet(
                 f"{resource_type}_{scenario}_cluster_profiles.parquet",
-                partition_cols=["IPM_Region"],
+                partition_cols=["ipm_region"],
             )
         else:
             cluster_profiles.round(4).to_parquet(
