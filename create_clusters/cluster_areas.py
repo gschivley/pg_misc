@@ -28,7 +28,7 @@ VCE_DATA_PATH = Path("/Volumes/Macintosh HD 1/Updated_Princeton_Data")
 VCE_WIND_PATH = VCE_DATA_PATH / "PRINCETON-Wind-Data-2012"
 VCE_SOLAR_PATH = VCE_DATA_PATH / "PRINCETON-Solar-Data-2012"
 
-  
+
 def snake(s: str) -> str:
     """
     Convert variable name to snake case.
@@ -45,7 +45,7 @@ def snake(s: str) -> str:
         >>> snake('d_coast_sub_161kVplus_miles')
         'd_coast_sub_161kvplus_miles'
     """
-    if '_' in s:
+    if "_" in s:
         return s.lower()
     else:
         return re.sub(r"([a-z])([A-Z])", r"\1_\2", s).lower()
@@ -66,7 +66,9 @@ def snake_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 def load_site_locations(folder=Path.cwd()):
 
-    site_locations = pd.read_csv(folder / "RUC_LatLonSites.csv", dtype={"Site": str}).pipe(snake_columns)
+    site_locations = pd.read_csv(
+        folder / "RUC_LatLonSites.csv", dtype={"Site": str}
+    ).pipe(snake_columns)
     site_locations["site"] = site_locations["site"].str.zfill(6)
 
     return site_locations
@@ -483,19 +485,11 @@ def main(
     for group, tidy_clustered in groups:
 
         logger.info(f"Processing group {group}")
-        group = {
-            "technology": resource_type,
-            "scenario": scenario,
-            **group
-        }
-        basename = '_'.join([str(v) for v in group.values()])
+        group = {"technology": resource_type, "scenario": scenario, **group}
+        basename = "_".join([str(v) for v in group.values()])
         group_path = f"{basename}_group.json"
         group["metadata"] = f"{basename}_metadata.csv"
-        group["profiles"] = (
-            f"{basename}_profiles.parquet"
-            if create_profiles
-            else None
-        )
+        group["profiles"] = f"{basename}_profiles.parquet" if create_profiles else None
 
         logger.info("Making cluster metadata")
         cluster_meta = make_cluster_metadata(
