@@ -2,6 +2,9 @@ import itertools
 import pandas as pd
 import numpy as np
 import scipy.cluster.hierarchy
+import os
+import glob
+import json
 
 WEIGHT = "gw"
 MEANS = [
@@ -17,6 +20,16 @@ MEANS = [
 SUMS = ["area", "gw"]
 PROFILE_KEYS = ["cbsa_id", "cluster_level", "cluster"]
 HOURS_IN_YEAR = 8784
+
+
+def harvest_group_metadata(path="."):
+    """Harvest group metadata from directory."""
+    paths = glob.glob(os.path.join(path, "*_group.json"))
+    groups = []
+    for path in paths:
+        with open(path, mode="r") as fp:
+            groups.append(json.load(fp))
+    return groups
 
 
 def format_metadata_inplace(df, cap_multiplier=None):
