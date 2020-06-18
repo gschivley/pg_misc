@@ -14,4 +14,6 @@ __pycache__
 2020-05-28-SolarBase15deg_CPAs_shapefile/
 20200612_combined_wind_0_01_offshore_supp_CPA_wAtt_US_LCOE.gdb/
 Electric_Substations/
-metro_areas/
+USA_Core_Based_Statistical_Area/
+!Site_SolarPV_CF.csv
+!atb_offshore_spur_costs.csv
