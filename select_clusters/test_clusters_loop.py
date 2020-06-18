@@ -25,6 +25,8 @@ logger.addHandler(handler)
 
 # ---- Constants ----
 
+UTC_OFFSET = 8
+
 METADATA_PATHS = {
     "OnshoreWind": "wind_base_cluster_metadata.csv",
     "UtilityPV": "solarpv_base_cluster_metadata.csv",
@@ -56,12 +58,12 @@ SCENARIOS = {
             "min_capacity": 150,
         },
         "WECC_N": {
-            "ipm_regions": ["WECC_ID", "WECC_MT", "WECC_NNV", "WECC_SNV", "WECC_UT"],
+            "ipm_regions": ["WECC_ID", "WECC_MT", "WECC_NNV", "WECC_UT"],
             "max_clusters": 20,
             "min_capacity": 250,
         },
         "WECC_NMAZ": {
-            "ipm_regions": ["WECC_AZ", "WECC_NM"],
+            "ipm_regions": ["WECC_AZ", "WECC_NM", "WECC_SNV",],
             "max_clusters": 15,
             "min_capacity": 300,
         },
@@ -88,12 +90,12 @@ SCENARIOS = {
             "min_capacity": 45,
         },
         "WECC_N": {
-            "ipm_regions": ["WECC_ID", "WECC_MT", "WECC_NNV", "WECC_SNV", "WECC_UT"],
+            "ipm_regions": ["WECC_ID", "WECC_MT", "WECC_NNV", "WECC_UT"],
             "max_clusters": 15,
             "min_capacity": 100,
         },
         "WECC_NMAZ": {
-            "ipm_regions": ["WECC_AZ", "WECC_NM"],
+            "ipm_regions": ["WECC_AZ", "WECC_NM", "WECC_SNV"],
             "max_clusters": 15,
             "min_capacity": 120,
         },
@@ -182,6 +184,18 @@ def make_region_data(technology, region):
     return tab1, tab2
 
 
+def remove_feb_29(df, offset):
+    df.index = pd.date_range(start="2012-01-01", freq="H", periods=8784)
+
+    df = df.loc[~((df.index.month == 2) & (df.index.day == 29)), :]
+
+    wrap_rows = df.iloc[:offset, :]
+
+    shifted_wrapped_df = pd.concat([df.iloc[offset:, :], wrap_rows], ignore_index=True)
+
+    return shifted_wrapped_df.reset_index(drop=True)
+
+
 PARALLEL = True
 USE_IP = False
 # ---- Processing ----
@@ -265,6 +279,8 @@ if PARALLEL:
     spur_line = pd.concat(cap_tx)
 else:
     resource_variability = pd.concat([col, resource_variability], axis=1)
+
+resource_variability = remove_feb_29(resource_variability, offset=UTC_OFFSET)
 
 spur_line.to_csv(
     "test_offshore_resource_capacity_spur_line.csv", index=False, float_format="%.3f"
