@@ -326,6 +326,7 @@ def load_metro_areas_shapefile():
     keep_cols = ["CBSA_ID", "NAME", "CBSA_TYPE", "POPULATION", "center", "geometry"]
     # metro_areas["geometry"] = metro_areas["center"]
     metro_areas = metro_areas.loc[:, keep_cols]
+    metro_areas["metro_id"] = metro_areas["CBSA_ID"]
     metro_areas.columns = metro_areas.columns.str.lower()
     metro_areas["state"] = metro_areas["name"].str.split(", ").str[-1]
     metro_areas = metro_areas.loc[~metro_areas.state.isin(["AK", "HI", "PR"]), :]
@@ -542,7 +543,7 @@ def calc_interconnect_distances(
         site_id_col
     ].map(nearest_site_metro.set_index(site_id_col)["site_metro_spur_miles"])
 
-    nan_sites = site_substation_metro.loc[site_substation_metro["cbsa_id"].isnull(), :]
+    nan_sites = site_substation_metro.loc[site_substation_metro["metro_id"].isnull(), :]
     num_nan_sites = len(nan_sites)
     if num_nan_sites > 0:
         egrid_col = "eGrid_to_E"
@@ -554,7 +555,7 @@ def calc_interconnect_distances(
             " and are being removed."
         )
 
-        site_substation_metro = site_substation_metro.dropna(subset=["cbsa_id"])
+        site_substation_metro = site_substation_metro.dropna(subset=["metro_id"])
 
     return site_substation_metro
 
@@ -751,18 +752,18 @@ def main(resource="solarpv", scenario="base"):
         gdf=us_states, id_col="NAME", lat=cpa_gdf.Latitude, lon=cpa_gdf.Longitude
     )
 
-    cpa_gdf["cbsa_id"] = label_site_region(
+    cpa_gdf["metro_id"] = label_site_region(
         gdf=metro_voronoi_gdf,
-        id_col="cbsa_id",
+        id_col="metro_id",
         lat=cpa_gdf.Latitude,
         lon=cpa_gdf.Longitude,
     )
 
-    cpa_gdf["city"] = cpa_gdf["cbsa_id"].map(
-        metro_voronoi_gdf.set_index("cbsa_id")["name"]
-    )
-    cpa_gdf["IPM_Region"] = cpa_gdf["cbsa_id"].map(
-        metro_voronoi_gdf.set_index("cbsa_id")["IPM_Region"]
+    # cpa_gdf["city"] = cpa_gdf["metro_id"].map(
+    #     metro_voronoi_gdf.set_index("cbsa_id")["name"]
+    # )
+    cpa_gdf["IPM_Region"] = cpa_gdf["metro_id"].map(
+        metro_voronoi_gdf.set_index("metro_id")["IPM_Region"]
     )
 
     site_locations = load_site_locations()
