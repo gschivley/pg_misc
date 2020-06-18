@@ -465,8 +465,8 @@ def main():
     logger.info("Loading states, voronoi, and CPAs")
     us_states = load_us_states_gdf()
 
-    metro_voronoi_gdf = gpd.read_file("large_metro_voronoi.geojson")
-    metro_voronoi_gdf = metro_voronoi_gdf.drop(columns=["area_km2", "cbsa_type"])
+    metro_voronoi_gdf = gpd.read_file("pjm_voronoi.geojson")
+    # metro_voronoi_gdf = metro_voronoi_gdf.drop(columns=["area_km2", "cbsa_type"])
     cpa_gdf = load_cpa_gdf(
         "20200612_combined_wind_0_01_offshore_supp_CPA_wAtt_US_LCOE.gdb",
         target_crs=us_states.crs,

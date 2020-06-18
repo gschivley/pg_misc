@@ -735,7 +735,7 @@ def main(resource="solarpv", scenario="base"):
     print("Loading states, voronoi, and CPAs")
     us_states = load_us_states_gdf()
 
-    metro_voronoi_gdf = gpd.read_file("large_metro_voronoi.geojson")
+    metro_voronoi_gdf = gpd.read_file("pjm_voronoi.geojson")
 
     cpa_files = {
         "wind": "2020-05-19-OnshoreWind-Base-upto30deg_shp",
