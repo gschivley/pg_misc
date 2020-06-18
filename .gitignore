@@ -10,3 +10,8 @@ __pycache__
 *.profraw
 *.DS_Store
 !AEO_2020*
+2020-05-19-OnshoreWind-Base-upto30deg_shp/
+2020-05-28-SolarBase15deg_CPAs_shapefile/
+20200612_combined_wind_0_01_offshore_supp_CPA_wAtt_US_LCOE.gdb/
+Electric_Substations/
+metro_areas/
