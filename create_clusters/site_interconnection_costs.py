@@ -316,10 +316,7 @@ def load_ipm_shapefile(filetype="shp"):
 
 def load_metro_areas_shapefile():
     shpfile_path = (
-        DATA_PATHS["data"]
-        / "metro_areas"
-        / "USA_Core_Based_Statistical_Area"
-        / "USA_Core_Based_Statistical_Area.shp"
+        CWD / "USA_Core_Based_Statistical_Area" / "USA_Core_Based_Statistical_Area.shp"
     )
     metro_areas = gpd.read_file(shpfile_path)
     metro_areas = metro_areas.to_crs(epsg=4326)
@@ -743,7 +740,6 @@ def main(resource="solarpv", scenario="base"):
     cpa_files = {
         "wind": "2020-05-19-OnshoreWind-Base-upto30deg_shp",
         "solarpv": "2020-05-28-SolarBase15deg_CPAs_shapefile",
-        "offshorewind": "combined_wind_0_01_offshore_supp_CPA_wAtt_zeroDepthRemoved_US",
     }
     cpa_slope_filter = {"wind": 19, "solarpv": 10}
     cpa_gdf = load_cpa_gdf(cpa_files[resource], target_crs=us_states.crs)
