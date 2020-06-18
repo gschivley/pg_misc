@@ -473,11 +473,10 @@ def calc_interconnect_distances(
 
     # Substation to nearest metro
     _substation_gdf = substation_gdf.rename(
-            columns={"latitude": "Latitude", "longitude": "Longitude"}
-        )
+        columns={"latitude": "Latitude", "longitude": "Longitude"}
+    )
     nearest_substation_metro = ckdnearest(
-        _substation_gdf,
-        metro_gdf.reset_index(drop=True),
+        _substation_gdf, metro_gdf.reset_index(drop=True),
     )
     nearest_substation_metro = nearest_substation_metro.rename(
         columns={"dist_mile": "substation_metro_tx_miles"}
@@ -725,7 +724,6 @@ def main(resource="solarpv", scenario="base"):
     cpa_files = {
         "wind": "2020-05-19-OnshoreWind-Base-upto30deg_shp",
         "solarpv": "2020-05-28-SolarBase15deg_CPAs_shapefile",
-        "offshorewind": "combined_wind_0_01_offshore_supp_CPA_wAtt_zeroDepthRemoved_US"
     }
     cpa_slope_filter = {"wind": 19, "solarpv": 10}
     cpa_gdf = load_cpa_gdf(cpa_files[resource], target_crs=us_states.crs)
