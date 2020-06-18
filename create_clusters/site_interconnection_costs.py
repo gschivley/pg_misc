@@ -300,10 +300,7 @@ def load_ipm_shapefile(filetype="shp"):
 
 def load_metro_areas_shapefile():
     shpfile_path = (
-        DATA_PATHS["data"]
-        / "metro_areas"
-        / "USA_Core_Based_Statistical_Area"
-        / "USA_Core_Based_Statistical_Area.shp"
+        CWD / "USA_Core_Based_Statistical_Area" / "USA_Core_Based_Statistical_Area.shp"
     )
     metro_areas = gpd.read_file(shpfile_path)
     metro_areas = metro_areas.to_crs(epsg=4326)
