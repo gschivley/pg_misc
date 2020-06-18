@@ -9,3 +9,4 @@
 __pycache__
 *.profraw
 *.DS_Store
+!AEO_2020*
