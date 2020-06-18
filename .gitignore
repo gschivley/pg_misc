@@ -4,3 +4,7 @@
 *.csv
 *.parquet
 !RUC*
+*.pyc
+*.vscode
+__pycache__
+*.profraw
