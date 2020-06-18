@@ -43,7 +43,16 @@ cost_multiplier_region_map = {
     "SRCA": ["S_VACA"],
     "PJMD": ["PJM_Dom"],
     "PJMW": ["PJM_West", "PJM_AP", "PJM_ATSI"],
-    "PJME": ["PJM_WMAC", "PJM_EMAC", "PJM_SMAC", "PJM_PENE"],
+    "PJME": [
+        "PJM_WMAC",
+        "PJM_EMAC",
+        "PJM_SMAC",
+        "PJM_PENE",
+        "PJM_Deleware",
+        "PJM_NJCoast",
+        "PJM_PECO",
+        "PJM_NJLand",
+    ],
     "SRCE": ["S_C_TVA", "S_C_KY"],
     "NYUP": ["NY_Z_A", "NY_Z_B", "NY_Z_C&E", "NY_Z_D", "NY_Z_F", "NY_Z_G-I",],
     "NYCW": ["NY_Z_J", "NY_Z_K"],
@@ -94,7 +103,14 @@ tx_capex_region_map = {
     "great_lakes": ["MIS_WUMS", "MIS_LMI",],
     "pjm_s": ["PJM_AP", "PJM_ATSI", "PJM_COMD", "PJM_Dom", "PJM_West", "S_C_KY",],
     "pj_pa": ["PJM_PENE", "PJM_WMAC",],
-    "pjm_md_nj": ["PJM_EMAC", "PJM_SMAC"],
+    "pjm_md_nj": [
+        "PJM_EMAC",
+        "PJM_SMAC",
+        "PJM_Deleware",
+        "PJM_NJCoast",
+        "PJM_PECO",
+        "PJM_NJLand",
+    ],
     "ny": ["NY_Z_A", "NY_Z_B", "NY_Z_C&E", "NY_Z_D", "NY_Z_F", "NY_Z_G-I",],
     "tva": ["S_C_TVA",],
     "south": ["S_SOU",],
@@ -476,11 +492,10 @@ def calc_interconnect_distances(
 
     # Substation to nearest metro
     _substation_gdf = substation_gdf.rename(
-            columns={"latitude": "Latitude", "longitude": "Longitude"}
-        )
+        columns={"latitude": "Latitude", "longitude": "Longitude"}
+    )
     nearest_substation_metro = ckdnearest(
-        _substation_gdf,
-        metro_gdf.reset_index(drop=True),
+        _substation_gdf, metro_gdf.reset_index(drop=True),
     )
     nearest_substation_metro = nearest_substation_metro.rename(
         columns={"dist_mile": "substation_metro_tx_miles"}
@@ -728,7 +743,7 @@ def main(resource="solarpv", scenario="base"):
     cpa_files = {
         "wind": "2020-05-19-OnshoreWind-Base-upto30deg_shp",
         "solarpv": "2020-05-28-SolarBase15deg_CPAs_shapefile",
-        "offshorewind": "combined_wind_0_01_offshore_supp_CPA_wAtt_zeroDepthRemoved_US"
+        "offshorewind": "combined_wind_0_01_offshore_supp_CPA_wAtt_zeroDepthRemoved_US",
     }
     cpa_slope_filter = {"wind": 19, "solarpv": 10}
     cpa_gdf = load_cpa_gdf(cpa_files[resource], target_crs=us_states.crs)
