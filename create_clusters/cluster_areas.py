@@ -26,6 +26,53 @@ VCE_DATA_PATH = Path("/Volumes/Macintosh HD 1/Updated_Princeton_Data")
 VCE_WIND_PATH = VCE_DATA_PATH / "PRINCETON-Wind-Data-2012"
 VCE_SOLAR_PATH = VCE_DATA_PATH / "PRINCETON-Solar-Data-2012"
 
+IPM_REGIONS = [
+    "MIS_WUMS",
+    "MIS_MNWI",
+    "MIS_IA",
+    "MIS_LMI",
+    "PJM_COMD",
+    "MIS_IL",
+    "MIS_MO",
+    "S_D_AECI",
+    "MIS_INKY",
+    "MIS_MAPP",
+    "SPP_WAUE",
+    "SPP_NEBR",
+    "MIS_MIDA",
+    "MIS_AMSO",
+    "MIS_WOTA",
+    "MIS_LA",
+    "MIS_AR",
+    "MIS_D_MS",
+    "S_VACA",
+    "PJM_Dom",
+    "PJM_West",
+    "PJM_AP",
+    "PJM_ATSI",
+    "PJM_WMAC",
+    "PJM_EMAC",
+    "PJM_SMAC",
+    "PJM_PENE",
+    "PJM_Deleware",
+    "PJM_NJCoast",
+    "PJM_PECO",
+    "PJM_NJLand",
+    "S_C_TVA",
+    "S_C_KY",
+    "NY_Z_A",
+    "NY_Z_B",
+    "NY_Z_C&E",
+    "NY_Z_D",
+    "NY_Z_F",
+    "NY_Z_G-I",
+    "NY_Z_J",
+    "NY_Z_K",
+    "NENG_ME",
+    "NENGREST",
+    "NENG_CT",
+]
+
 
 def load_site_locations(folder=Path.cwd()):
 
@@ -376,6 +423,9 @@ def main(
             resource_density=resource_density,
         )
     )
+
+    # only keep the regions that might be in PJM study
+    cpa_lcoe = cpa_lcoe.loc[cpa_lcoe.IPM_Region.isin(IPM_REGIONS), :]
 
     logger.info("LCOE loaded, calculating cluster labels")
     cpa_lcoe_cluster_labels = cpa_lcoe.groupby(
