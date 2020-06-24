@@ -25,6 +25,8 @@ logger.addHandler(handler)
 
 # ---- Constants ----
 
+TURBINE_TYPE = "fixed"
+
 METADATA_PATHS = {
     "OnshoreWind": "wind_base_cluster_metadata.csv",
     "UtilityPV": "solarpv_base_cluster_metadata.csv",
@@ -108,7 +110,19 @@ SCENARIOS = {
             "min_capacity": 200,
         },
     },
-    "OffShoreWind": {
+    "OffShoreWind_fixed": {
+        "CA_N": {
+            "ipm_regions": ["WEC_CALN", "WECC_BANC"],
+            "max_clusters": 3,
+            "min_capacity": 35,
+        },
+        "WECC_PNW": {
+            "ipm_regions": ["WECC_PNW"],
+            "max_clusters": 3,
+            "min_capacity": 26,
+        },
+    },
+    "OffShoreWind_floating": {
         "CA_N": {
             "ipm_regions": ["WEC_CALN", "WECC_BANC"],
             "max_clusters": 3,
@@ -131,7 +145,7 @@ def make_region_data(technology, region):
     if tech == "OffShoreWind":
         metadata = (
             pd.read_csv(METADATA_PATHS[technology])
-            .query("prefSite==1 & turbineType=='floating'")
+            .query("prefSite==1 & turbineType==@TURBINE_TYPE")
             .pipe(
                 format_metadata,
                 cap_multiplier=CAPACITY_MULTIPLIER.get(technology),
@@ -154,7 +168,7 @@ def make_region_data(technology, region):
         )
     elif tech == "OffShoreWind":
         profiles = pd.read_parquet(PROFILE_PATHS[technology]).query(
-            "prefSite==1 & turbineType=='floating'"
+            "prefSite==1 & turbineType==@TURBINE_TYPE"
         )
     else:
         profiles = pd.read_parquet(PROFILE_PATHS[technology])
@@ -211,7 +225,7 @@ for tech in SCENARIOS:
             if tech == "OffShoreWind":
                 metadata = (
                     pd.read_csv(METADATA_PATHS[technology])
-                    .query("prefSite==1 & turbineType=='floating'")
+                    .query("prefSite==1 & turbineType==@TURBINE_TYPE")
                     .pipe(
                         format_metadata,
                         cap_multiplier=CAPACITY_MULTIPLIER.get(technology),
