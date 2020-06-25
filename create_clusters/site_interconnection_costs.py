@@ -107,21 +107,21 @@ rev_region_mapping = reverse_dict_of_lists(tx_capex_region_map)
 
 spur_costs_2013 = {
     "wecc": 3900,
-    "ca": 5200,
+    "ca": 3900 * 2.25,  # According to Reeds docs, CA is 2.25x the rest of WECC
     "tx": 3900,
     "upper_midwest": 3900,
     "lower_midwest": 3800,
-    "miso_s": 5200,
+    "miso_s": 5201,
     "great_lakes": 4100,
-    "pjm_s": 5200,
-    "pj_pa": 5200,
-    "pjm_md_nj": 5200,
-    "ny": 5200,
+    "pjm_s": 5201,
+    "pj_pa": 5201,
+    "pjm_md_nj": 5201,
+    "ny": 5201,
     "tva": 3800,
     "south": 4950,
     "fl": 4100,
     "vaca": 3800,
-    "ne": 5200,
+    "ne": 5201,
 }
 
 spur_costs_2017 = {
@@ -131,7 +131,7 @@ spur_costs_2017 = {
 
 tx_costs_2013 = {
     "wecc": 1350,
-    "ca": 2750,
+    "ca": 1350 * 2.25,  # According to Reeds docs, CA is 2.25x the rest of WECC
     "tx": 1350,
     "upper_midwest": 900,
     "lower_midwest": 900,
@@ -139,13 +139,13 @@ tx_costs_2013 = {
     "great_lakes": 1050,
     "pjm_s": 1350,
     "pj_pa": 1750,
-    "pjm_md_nj": 3500,
-    "ny": 3500,
+    "pjm_md_nj": 3501,
+    "ny": 3501,
     "tva": 1050,
     "south": 1350,
     "fl": 1350,
     "vaca": 900,
-    "ne": 3500,
+    "ne": 3501,
 }
 
 tx_costs_2017 = {
