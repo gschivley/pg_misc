@@ -110,19 +110,7 @@ SCENARIOS = {
             "min_capacity": 200,
         },
     },
-    "OffShoreWind_fixed": {
-        "CA_N": {
-            "ipm_regions": ["WEC_CALN", "WECC_BANC"],
-            "max_clusters": 3,
-            "min_capacity": 35,
-        },
-        "WECC_PNW": {
-            "ipm_regions": ["WECC_PNW"],
-            "max_clusters": 3,
-            "min_capacity": 26,
-        },
-    },
-    "OffShoreWind_floating": {
+    "OffShoreWind": {
         "CA_N": {
             "ipm_regions": ["WEC_CALN", "WECC_BANC"],
             "max_clusters": 3,
