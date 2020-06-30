@@ -801,7 +801,7 @@ def main(resource="solarpv", scenario="base"):
 
     print("Writing results to file")
     cpa_substation_metro_lcoe.drop(columns=["geometry"]).to_csv(
-        f"{scenario}_{resource}_lcoe.csv", index=False, float_format="%.5f"
+        f"{scenario}_{resource}_lcoe_pjm.csv", index=False, float_format="%.5f"
     )
 
 

@@ -511,7 +511,9 @@ def main():
 
     logger.info("Writing results to file")
 
-    cpa_vce_lcoe.drop(columns=["geometry"]).to_csv("base_offshorewind_lcoe.csv", index=False, float_format='%.5f')
+    cpa_vce_lcoe.drop(columns=["geometry"]).to_csv(
+        "base_offshorewind_lcoe_pjm.csv", index=False, float_format="%.5f"
+    )
 
 
 if __name__ == "__main__":
