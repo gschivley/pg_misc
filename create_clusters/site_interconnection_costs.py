@@ -111,12 +111,12 @@ tx_capex_region_map = {
         "PJM_PECO",
         "PJM_NJLand",
     ],
-    "ny": ["NY_Z_A", "NY_Z_B", "NY_Z_C&E", "NY_Z_D", "NY_Z_F", "NY_Z_G-I",],
+    "ny": ["NY_Z_A", "NY_Z_B", "NY_Z_C&E", "NY_Z_D", "NY_Z_F", "NY_Z_G-I", "NY_Z_J",],
     "tva": ["S_C_TVA",],
     "south": ["S_SOU",],
     "fl": ["FRCC"],
     "vaca": ["S_VACA"],
-    "ne": ["NY_Z_J", "NY_Z_K", "NENG_CT", "NENG_ME", "NENGREST",],
+    "ne": ["NY_Z_K", "NENG_CT", "NENG_ME", "NENGREST",],
 }
 
 rev_region_mapping = reverse_dict_of_lists(tx_capex_region_map)
@@ -127,17 +127,17 @@ spur_costs_2013 = {
     "tx": 3900,
     "upper_midwest": 3900,
     "lower_midwest": 3800,
-    "miso_s": 5201,
+    "miso_s": 3900 * 2.25,
     "great_lakes": 4100,
-    "pjm_s": 5201,
-    "pj_pa": 5201,
-    "pjm_md_nj": 5201,
-    "ny": 5201,
+    "pjm_s": 3900 * 2.25,
+    "pj_pa": 3900 * 2.25,
+    "pjm_md_nj": 3900 * 2.25,
+    "ny": 3900 * 2.25,
     "tva": 3800,
     "south": 4950,
     "fl": 4100,
     "vaca": 3800,
-    "ne": 5201,
+    "ne": 3900 * 2.25,
 }
 
 spur_costs_2017 = {
@@ -155,13 +155,13 @@ tx_costs_2013 = {
     "great_lakes": 1050,
     "pjm_s": 1350,
     "pj_pa": 1750,
-    "pjm_md_nj": 3501,
-    "ny": 3501,
+    "pjm_md_nj": 4250,  # Bins are $1500 wide - assume max bin is $750 above max
+    "ny": 2750,
     "tva": 1050,
     "south": 1350,
     "fl": 1350,
     "vaca": 900,
-    "ne": 3501,
+    "ne": 4250,  # Bins are $1500 wide - assume max bin is $750 above max
 }
 
 tx_costs_2017 = {
@@ -800,7 +800,9 @@ def main(resource="solarpv", scenario="base"):
     )
 
     print("Writing results to file")
-    cpa_substation_metro_lcoe.to_csv(f"{scenario}_{resource}_lcoe.csv", index=False)
+    cpa_substation_metro_lcoe.drop(columns=["geometry"]).to_csv(
+        f"{scenario}_{resource}_lcoe.csv", index=False, float_format="%.5f"
+    )
 
 
 # def load_cluster_assignments(path):
