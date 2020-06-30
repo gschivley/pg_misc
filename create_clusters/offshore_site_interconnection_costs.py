@@ -494,7 +494,8 @@ def main():
 
     logger.info("Writing results to file")
 
-    cpa_vce_lcoe.drop(columns=["geometry"]).to_csv("base_offshorewind_lcoe.csv", index=False, float_format='%.5f')
+    # cpa_vce_lcoe.to_csv("base_offshorewind_lcoe.csv", index=False, float_format='%.5f')
+    cpa_vce_lcoe.to_file("base_offshore_lcoe.geojson", driver="GeoJSON")
 
 
 if __name__ == "__main__":
