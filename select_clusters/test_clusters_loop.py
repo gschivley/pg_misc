@@ -132,7 +132,7 @@ def make_region_data(technology, region):
     # Prepare resource metadata and profiles
     if tech == "OffShoreWind":
         metadata = (
-            pd.read_csv(METADATA_PATHS[technology])
+            pd.read_csv(METADATA_PATHS[technology], dtype={"metro_id": str})
             .query("prefSite==1 & turbineType==@TURBINE_TYPE")
             .pipe(
                 format_metadata,
@@ -141,7 +141,7 @@ def make_region_data(technology, region):
             )
         )
     else:
-        metadata = pd.read_csv(METADATA_PATHS[technology]).pipe(
+        metadata = pd.read_csv(METADATA_PATHS[technology], dtype={"metro_id": str}).pipe(
             format_metadata,
             cap_multiplier=CAPACITY_MULTIPLIER.get(technology),
             by="lcoe",
@@ -212,7 +212,7 @@ for tech in SCENARIOS:
             # IP()
             if tech == "OffShoreWind":
                 metadata = (
-                    pd.read_csv(METADATA_PATHS[technology])
+                    pd.read_csv(METADATA_PATHS[technology], dtype={"metro_id": str})
                     .query("prefSite==1 & turbineType==@TURBINE_TYPE")
                     .pipe(
                         format_metadata,
@@ -221,7 +221,7 @@ for tech in SCENARIOS:
                     )
                 )
             else:
-                metadata = pd.read_csv(METADATA_PATHS[technology]).pipe(
+                metadata = pd.read_csv(METADATA_PATHS[technology], dtype={"metro_id": str}).pipe(
                     format_metadata,
                     cap_multiplier=CAPACITY_MULTIPLIER.get(technology),
                     by="lcoe",
@@ -236,7 +236,7 @@ for tech in SCENARIOS:
                 )
             elif tech == "OffShoreWind":
                 profiles = pd.read_parquet(PROFILE_PATHS[technology]).query(
-                    "prefSite==1 & turbineType=='floating'"
+                    "prefSite==1 & turbineType==@TURBINE_TYPE"
                 )
             else:
                 profiles = pd.read_parquet(PROFILE_PATHS[technology])
