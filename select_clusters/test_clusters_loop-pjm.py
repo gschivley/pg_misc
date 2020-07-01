@@ -28,15 +28,15 @@ logger.addHandler(handler)
 TURBINE_TYPE = "fixed"
 
 METADATA_PATHS = {
-    "OnshoreWind": "wind_base_cluster_metadata.csv",
-    "UtilityPV": "solarpv_base_cluster_metadata.csv",
-    "OffShoreWind": "offshorewind_base_cluster_metadata.csv",
+    "OnshoreWind": "pjm/wind_base_cluster_metadata.csv",
+    "UtilityPV": "pjm/solarpv_base_cluster_metadata.csv",
+    "OffShoreWind": "pjm/offshorewind_base_cluster_metadata.csv",
 }
 
 PROFILE_PATHS = {
-    "OnshoreWind": "wind_base_cluster_profiles.parquet",
-    "UtilityPV": "solarpv_base_cluster_profiles.parquet",
-    "OffShoreWind": "offshorewind_base_cluster_profiles.parquet",
+    "OnshoreWind": "pjm/wind_base_cluster_profiles.parquet",
+    "UtilityPV": "pjm/solarpv_base_cluster_profiles.parquet",
+    "OffShoreWind": "pjm/offshorewind_base_cluster_profiles.parquet",
 }
 
 CAPACITY_MULTIPLIER = {
