@@ -46,16 +46,16 @@ CAPACITY_MULTIPLIER = {
 }
 
 SCENARIOS = {
-"UtilityPV": {
+    "UtilityPV": {
         "PJM_WEST": {
             "ipm_regions": ["PJM_West", "PJM_AP", "PJM_ATSI", "S_C_KY"],
             "max_clusters": 4,
-            "min_capacity": 650,
+            "min_capacity": 584,
         },
         "PJM_WestMAC": {
             "ipm_regions": ["PJM_PENE", "PJM_WMAC"],
             "max_clusters": 10,  # 5
-            "min_capacity": 200,
+            "min_capacity": 192,
         },
         "NY_West": {
             "ipm_regions": ["NY_Z_A", "NY_Z_B", "NY_Z_C&E", "NY_Z_D"],
@@ -70,7 +70,57 @@ SCENARIOS = {
         "MIS_Central": {
             "ipm_regions": ["MIS_INKY", "MISO_IL", "MISO_MO"],
             "max_clusters": 15,
-            "min_capacity": 610,
+            "min_capacity": 132,
+        },
+        "PJM_COMD": {
+            "ipm_regions": ["PJM_COMD"],
+            "max_clusters": 15,
+            "min_capacity": 30,
+        },
+        "PJM_Dom": {
+            "ipm_regions": ["PJM_Dom"],
+            "max_clusters": 15,
+            "min_capacity": 267,
+        },
+        "PJM_NJLand": {
+            "ipm_regions": ["PJM_NJLand"],
+            "max_clusters": 15,
+            "min_capacity": 6,
+        },
+        "PJM_NJCoast": {
+            "ipm_regions": ["PJM_NJCoast"],
+            "max_clusters": 15,
+            "min_capacity": 3,
+        },
+        "PJM_Deleware": {
+            "ipm_regions": ["PJM_Deleware"],
+            "max_clusters": 15,
+            "min_capacity": 9,
+        },
+        "PJM_PECO": {
+            "ipm_regions": ["PJM_PECO"],
+            "max_clusters": 15,
+            "min_capacity": 5,
+        },
+        "PJM_SMAC": {
+            "ipm_regions": ["PJM_SMAC"],
+            "max_clusters": 15,
+            "min_capacity": 73,
+        },
+        "MIS_LMI": {
+            "ipm_regions": ["MIS_LMI"],
+            "max_clusters": 15,
+            "min_capacity": 120,
+        },
+        "SC_TVA": {
+            "ipm_regions": ["S_C_TVA"],
+            "max_clusters": 15,
+            "min_capacity": 320,
+        },
+        "S_VACA": {
+            "ipm_regions": ["S_VACA"],
+            "max_clusters": 15,
+            "min_capacity": 600,
         },
     },
     "OnshoreWind": {
@@ -97,38 +147,86 @@ SCENARIOS = {
         "MIS_Central": {
             "ipm_regions": ["MIS_INKY", "MISO_IL", "MISO_MO"],
             "max_clusters": 15,
-            "min_capacity": 220,
+            "min_capacity": 140,
+        },
+        "PJM_COMD": {
+            "ipm_regions": ["PJM_COMD"],
+            "max_clusters": 15,
+            "min_capacity": 47,
+        },
+        "PJM_Dom": {
+            "ipm_regions": ["PJM_Dom"],
+            "max_clusters": 15,
+            "min_capacity": 20,
+        },
+        "PJM_PECO": {
+            "ipm_regions": ["PJM_PECO"],
+            "max_clusters": 15,
+            "min_capacity": 3,
+        },
+        "PJM_SMAC": {
+            "ipm_regions": ["PJM_SMAC"],
+            "max_clusters": 15,
+            "min_capacity": 10,
+    },
+        "MIS_LMI": {
+            "ipm_regions": ["MIS_LMI"],
+            "max_clusters": 15,
+            "min_capacity": 26,
+        },
+        "SC_TVA": {
+            "ipm_regions": ["S_C_TVA"],
+            "max_clusters": 15,
+            "min_capacity": 5,
         },
     },
-    "OffShoreWind_fixed": {
-        "NY_West": {
-            "ipm_regions": ["NY_Z_A", "NY_Z_B", "NY_Z_C&E", "NY_Z_D"],
-            "max_clusters": 20,
-            "min_capacity": 15,
-        },
+    "OffShoreWind": {
+        # "NY_West": {
+        #     "ipm_regions": ["NY_Z_A", "NY_Z_B", "NY_Z_C&E", "NY_Z_D"],
+        #     "max_clusters": 20,
+        #     "min_capacity": 15,
+        # },
         "NY_East": {
             "ipm_regions": ["NY_Z_F", "NY_Z_G-I", "NY_Z_J", "NY_Z_K"],
             "max_clusters": 15,
-            "min_capacity": 50,
+            "min_capacity": 17,
         },
-        "PJM_WEST": {
-            "ipm_regions": ["PJM_West", "PJM_AP", "PJM_ATSI", "S_C_KY"],
-            "max_clusters": 4,
-            "min_capacity": 6,
+        # "PJM_WEST": {
+        #     "ipm_regions": ["PJM_West", "PJM_AP", "PJM_ATSI", "S_C_KY"],
+        #     "max_clusters": 4,
+        #     "min_capacity": 6,
+        # },
+        "PJM_Dom": {
+            "ipm_regions": ["PJM_Dom"],
+            "max_clusters": 15,
+            "min_capacity": 4,
+        },
+        "PJM_NJCoast": {
+            "ipm_regions": ["PJM_NJCoast"],
+            "max_clusters": 15,
+            "min_capacity": 13,
+        },
+        "PJM_Deleware": {
+            "ipm_regions": ["PJM_Deleware"],
+            "max_clusters": 15,
+            "min_capacity": 2.5,
+    },
+        # "PJM_SMAC": {
+        #     "ipm_regions": ["PJM_SMAC"],
+        #     "max_clusters": 15,
+        #     "min_capacity": 12,
+        # },
+        # "SC_TVA": {
+        #     "ipm_regions": ["S_C_TVA"],
+        #     "max_clusters": 15,
+        #     "min_capacity": 8,
+    # },
+        "S_VACA": {
+            "ipm_regions": ["S_VACA"],
+            "max_clusters": 15,
+            "min_capacity": 18.5,
         },
     },
-    # "OffShoreWind_floating": {
-    #     "CA_N": {
-    #         "ipm_regions": ["WEC_CALN", "WECC_BANC"],
-    #         "max_clusters": 3,
-    #         "min_capacity": 35,
-    #     },
-    #     "WECC_PNW": {
-    #         "ipm_regions": ["WECC_PNW"],
-    #         "max_clusters": 3,
-    #         "min_capacity": 26,
-    #     },
-    # },
 }
 
 
@@ -276,8 +374,8 @@ else:
     resource_variability = pd.concat([col, resource_variability], axis=1)
 
 spur_line.to_csv(
-    "test_offshore_resource_capacity_spur_line.csv", index=False, float_format="%.3f"
+    "test_offshore_resource_capacity_spur_line_pjm.csv", index=False, float_format="%.3f"
 )
 resource_variability.to_csv(
-    "test_offshore_variable_resource_profiles.csv", index=False, float_format="%.4f"
+    "test_offshore_variable_resource_profiles_pjm.csv", index=False, float_format="%.4f"
 )
