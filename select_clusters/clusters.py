@@ -3,6 +3,19 @@ import itertools
 import pandas as pd
 import numpy as np
 import scipy.cluster.hierarchy
+import logging
+
+logger = logging.getLogger(__file__)
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+formatter = logging.Formatter(
+    # More extensive test-like formatter...
+    "%(asctime)s [%(levelname)8s] %(name)s:%(lineno)s %(message)s",
+    # This is the datetime format string.
+    "%Y-%m-%d %H:%M:%S",
+)
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 WEIGHT = "gw"
 MEANS = [
@@ -16,7 +29,7 @@ MEANS = [
     "site_metro_spur_miles",
 ]
 SUMS = ["area", "gw"]
-PROFILE_KEYS = ["cbsa_id", "cluster_level", "cluster"]
+PROFILE_KEYS = ["metro_id", "cluster_level", "cluster"]
 HOURS_IN_YEAR = 8784
 
 
@@ -28,8 +41,8 @@ def format_metadata(df, cap_multiplier=None, by="gw"):
     # Initialize sequential unique cluster id
     cluster_id = 1
     all_clusters = []
-    for cbsa in df["cbsa_id"].unique():
-        sdf = df[df["cbsa_id"] == cbsa]
+    for metro in df["metro_id"].unique():
+        sdf = df[df["metro_id"] == metro]
         levels = sdf["cluster_level"].drop_duplicates().sort_values(ascending=False)
         # Start from base clusters
         clusters = sdf[sdf["cluster_level"] == levels.max()].to_dict(orient="records")
@@ -48,7 +61,7 @@ def format_metadata(df, cap_multiplier=None, by="gw"):
             ]
             if len(children) != 2:
                 raise ValueError(
-                    f"Found {len(children)} children for level {level} in cbsa_id {cbsa}"
+                    f"Found {len(children)} children for level {level} in metro_id {metro}"
                 )
             for x in children:
                 x["parent_id"] = parent_id
@@ -60,7 +73,7 @@ def format_metadata(df, cap_multiplier=None, by="gw"):
                 parent["id"] = parent_id
             else:
                 raise ValueError(
-                    f"Found {sum(is_parent)} parents at level {level} in cbsa_id {cbsa}"
+                    f"Found {sum(is_parent)} parents at level {level} in metro_id {metro}"
                 )
             clusters.append(parent)
         all_clusters.extend(clusters)
@@ -85,14 +98,18 @@ def build_clusters(metadata, ipm_regions, min_capacity=None, max_clusters=np.inf
         # Drop clusters with highest LCOE until min_capacity reached
         end = cdf["gw"].cumsum().searchsorted(min_capacity) + 1
         if end > len(cdf):
-            raise ValueError(
-                f"Capacity in {ipm_regions} ({cdf['gw'].sum()} GW) less than minimum ({min_capacity} GW)"
+            logger.warning(
+                f"Capacity in {ipm_regions} ({cdf['gw'].sum()} GW) less than minimum "
+                f"({min_capacity} GW). Using all available capacity instead."
             )
+            # raise ValueError(
+            #     f"Capacity in {ipm_regions} ({cdf['gw'].sum()} GW) less than minimum ({min_capacity} GW)"
+            # )
         else:
             cdf = cdf[:end]
     # Track ids of base clusters through aggregation
     cdf["ids"] = [[x] for x in cdf["id"]]
-    # Aggregate clusters within each metro area (cbsa_id)
+    # Aggregate clusters within each metro area (metro_id)
     while len(cdf) > max_clusters:
         # Sort parents by lowest LCOE distance of children
         diff = lambda x: abs(x.max() - x.min())
@@ -199,9 +216,9 @@ def clusters_to_variable_resource_profiles_table(
 def _get_base_clusters(df, ipm_regions):
     return (
         df[df["ipm_region"].isin(ipm_regions)]
-        .groupby("cbsa_id")
+        .groupby("metro_id")
         .apply(lambda g: g[g["cluster_level"] == g["cluster_level"].max()])
-        .reset_index(level=["cbsa_id"], drop=True)
+        .reset_index(level=["metro_id"], drop=True)
     )
 
 
