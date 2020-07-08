@@ -17,7 +17,7 @@ formatter = logging.Formatter(
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
-WEIGHT = "gw"
+WEIGHT = "mw"
 MEANS = [
     "lcoe",
     "interconnect_annuity",
@@ -28,16 +28,16 @@ MEANS = [
     "substation_metro_tx_miles",
     "site_metro_spur_miles",
 ]
-SUMS = ["area", "gw"]
+SUMS = ["area", "mw"]
 PROFILE_KEYS = ["metro_id", "cluster_level", "cluster"]
 HOURS_IN_YEAR = 8784
 
 
-def format_metadata(df, cap_multiplier=None, by="gw"):
+def format_metadata(df, cap_multiplier=None, by="mw"):
     # Convert all column names to lowercase
     df.columns = [name.lower() for name in df.columns]
     if cap_multiplier:
-        df["gw"] = df["gw"] * cap_multiplier
+        df["mw"] = df["mw"] * cap_multiplier
     # Initialize sequential unique cluster id
     cluster_id = 1
     all_clusters = []
@@ -96,15 +96,12 @@ def build_clusters(metadata, ipm_regions, min_capacity=None, max_clusters=np.inf
     cdf = _get_base_clusters(df, ipm_regions).sort_values("lcoe")
     if min_capacity:
         # Drop clusters with highest LCOE until min_capacity reached
-        end = cdf["gw"].cumsum().searchsorted(min_capacity) + 1
+        end = cdf["mw"].cumsum().searchsorted(min_capacity) + 1
         if end > len(cdf):
             logger.warning(
-                f"Capacity in {ipm_regions} ({cdf['gw'].sum()} GW) less than minimum "
-                f"({min_capacity} GW). Using all available capacity instead."
+                f"Capacity in {ipm_regions} ({cdf['mw'].sum()} MW) less than minimum "
+                f"({min_capacity} MW). Using all available capacity instead."
             )
-            # raise ValueError(
-            #     f"Capacity in {ipm_regions} ({cdf['gw'].sum()} GW) less than minimum ({min_capacity} GW)"
-            # )
         else:
             cdf = cdf[:end]
     # Track ids of base clusters through aggregation
@@ -173,7 +170,7 @@ def build_cluster_profiles(clusters, metadata, profiles):
         capacities = profiles.loc[idx, "capacity_factor"].values.reshape(
             HOURS_IN_YEAR, -1, order="F"
         )
-        weights = metadata.loc[ids, "gw"].values
+        weights = metadata.loc[ids, "mw"].values
         weights /= weights.sum()
         results[:, i] = (capacities * weights).sum(axis=1)
     return results
@@ -181,7 +178,7 @@ def build_cluster_profiles(clusters, metadata, profiles):
 
 def clusters_to_capacity_transmission_table(clusters, region, technology):
     columns = [
-        "gw",
+        "mw",
         "area",
         "lcoe",
         "interconnect_annuity",
@@ -197,7 +194,7 @@ def clusters_to_capacity_transmission_table(clusters, region, technology):
         clusters[columns]
         .assign(region=region, technology=technology, cluster=clusters.index)
         .reset_index(drop=True)
-        .rename(columns={"gw": "max_capacity"})
+        .rename(columns={"mw": "max_capacity"})
         .rename(columns={"area": "area_km2"})
     )
 

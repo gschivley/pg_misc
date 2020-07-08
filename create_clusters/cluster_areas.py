@@ -153,7 +153,8 @@ def make_clusters_tidy(cluster_df, additional_cluster_cols=[]):
         "tx_miles",
         "interconnect_annuity",
         "m_popden",
-        "GW",
+        "MW",
+        "state",
     ]
     keep_cols = [col for col in keep_cols if col in cluster_df.columns]
     id_vars = (
@@ -181,7 +182,7 @@ def make_cluster_metadata(
     tidy_clustered,
     additional_group_cols=[],
     relative_rmse_filter=0.025,
-    gw_filter=0.5,
+    mw_filter=500,
 ):
     group_cols = [
         "IPM_Region",
@@ -195,14 +196,14 @@ def make_cluster_metadata(
     )
     clustered_meta.columns = ["lcoe"]
 
-    sum_cols = ["Area", "GW"]
+    sum_cols = ["Area", "MW"]
     clustered_meta[sum_cols] = tidy_clustered.groupby(group_cols)[sum_cols].sum()
 
     avg_std_capacity = (
         clustered_meta.reset_index()
-        .groupby(["metro_id", "cluster_level"], as_index=False)["GW"]
+        .groupby(["metro_id", "cluster_level"], as_index=False)["MW"]
         .sum()
-        .groupby("metro_id")["GW"]
+        .groupby("metro_id")["MW"]
         .std()
         .mean()
     )
@@ -236,7 +237,7 @@ def make_cluster_metadata(
     clustered_meta["meets_criteria"] = False
     clustered_meta.loc[
         (clustered_meta["relative_rmse"] <= relative_rmse_filter)
-        | (clustered_meta["GW"] <= gw_filter),
+        | (clustered_meta["MW"] <= mw_filter),
         "meets_criteria",
     ] = True
 
@@ -329,11 +330,11 @@ def set_final_spur_columns(cpa_lcoe, resource_type):
 def set_cpa_capacity(cpa_lcoe, resource_type, resource_density):
 
     if resource_type == "offshorewind":
-        cpa_lcoe["GW"] = (
-            cpa_lcoe["Area"] * cpa_lcoe["turbineType"].map(resource_density) / 1000
+        cpa_lcoe["MW"] = (
+            cpa_lcoe["Area"] * cpa_lcoe["turbineType"].map(resource_density)
         )
     else:
-        cpa_lcoe["GW"] = cpa_lcoe["Area"] * resource_density[resource_type] / 1000
+        cpa_lcoe["MW"] = cpa_lcoe["Area"] * resource_density[resource_type]
 
     return cpa_lcoe
 
@@ -343,8 +344,9 @@ def main(
     resource_type="solarpv",
     scenario="base",
     relative_rmse_filter: float = 0.025,
-    gw_filter: float = 0.5,
+    mw_filter: float = 500,
     create_profiles: bool = True,
+    write_site_labels: bool = True,
     n_jobs: int = -2,
     max_cluster_levels: int = 50,
 ):
@@ -365,7 +367,7 @@ def main(
         additional_group_cols = []
 
     if resource_type == "solarpv":
-        gw_filter = 2.5
+        mw_filter = 2500
 
     cpa_lcoe = (
         load_lcoe_data(lcoe_path)
@@ -394,7 +396,7 @@ def main(
         tidy_clustered=tidy_clustered,
         additional_group_cols=additional_group_cols,
         relative_rmse_filter=relative_rmse_filter,
-        gw_filter=gw_filter,
+        mw_filter=mw_filter,
     )
 
     logger.info("Writing metadata.")
