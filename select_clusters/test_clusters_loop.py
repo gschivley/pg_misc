@@ -28,15 +28,15 @@ logger.addHandler(handler)
 UTC_OFFSET = 8
 
 METADATA_PATHS = {
-    "OnshoreWind": "wind_base_cluster_metadata.csv",
-    "UtilityPV": "solarpv_base_cluster_metadata.csv",
-    "OffShoreWind": "offshorewind_base_cluster_metadata.csv",
+    "OnshoreWind": "../cluster_data/WECC_wind_base_cluster_metadata.csv",
+    "UtilityPV": "../cluster_data/WECC_solarpv_base_cluster_metadata.csv",
+    "OffShoreWind": "../cluster_data/WECC_offshorewind_base_cluster_metadata.csv",
 }
 
 PROFILE_PATHS = {
-    "OnshoreWind": "wind_base_cluster_profiles.parquet",
-    "UtilityPV": "solarpv_base_cluster_profiles.parquet",
-    "OffShoreWind": "offshorewind_base_cluster_profiles.parquet",
+    "OnshoreWind": "../cluster_data/WECC_wind_base_cluster_profiles.parquet",
+    "UtilityPV": "../cluster_data/WECC_solarpv_base_cluster_profiles.parquet",
+    "OffShoreWind": "../cluster_data/WECC_offshorewind_base_cluster_profiles.parquet",
 }
 
 CAPACITY_MULTIPLIER = {
@@ -132,7 +132,7 @@ def make_region_data(technology, region):
     # Prepare resource metadata and profiles
     if tech == "OffShoreWind":
         metadata = (
-            pd.read_csv(METADATA_PATHS[technology])
+            pd.read_csv(METADATA_PATHS[technology], dtype={"metro_id": str})
             .query("prefSite==1 & turbineType=='floating'")
             .pipe(
                 format_metadata,
@@ -141,7 +141,7 @@ def make_region_data(technology, region):
             )
         )
     else:
-        metadata = pd.read_csv(METADATA_PATHS[technology]).pipe(
+        metadata = pd.read_csv(METADATA_PATHS[technology], dtype={"metro_id": str}).pipe(
             format_metadata,
             cap_multiplier=CAPACITY_MULTIPLIER.get(technology),
             by="lcoe",
@@ -196,7 +196,7 @@ def remove_feb_29(df, offset):
     return shifted_wrapped_df.reset_index(drop=True)
 
 
-PARALLEL = True
+PARALLEL = False
 USE_IP = False
 # ---- Processing ----
 spur_line = pd.DataFrame()
@@ -224,7 +224,7 @@ for tech in SCENARIOS:
             # IP()
             if tech == "OffShoreWind":
                 metadata = (
-                    pd.read_csv(METADATA_PATHS[technology])
+                    pd.read_csv(METADATA_PATHS[technology], dtype={"metro_id": str})
                     .query("prefSite==1 & turbineType=='floating'")
                     .pipe(
                         format_metadata,
@@ -233,7 +233,7 @@ for tech in SCENARIOS:
                     )
                 )
             else:
-                metadata = pd.read_csv(METADATA_PATHS[technology]).pipe(
+                metadata = pd.read_csv(METADATA_PATHS[technology], dtype={"metro_id": str}).pipe(
                     format_metadata,
                     cap_multiplier=CAPACITY_MULTIPLIER.get(technology),
                     by="lcoe",

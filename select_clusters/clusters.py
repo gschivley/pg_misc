@@ -39,46 +39,47 @@ def format_metadata(df, cap_multiplier=None, by="mw"):
     if cap_multiplier:
         df["mw"] = df["mw"] * cap_multiplier
     # Initialize sequential unique cluster id
-    cluster_id = 1
-    all_clusters = []
-    for metro in df["metro_id"].unique():
-        sdf = df[df["metro_id"] == metro]
-        levels = sdf["cluster_level"].drop_duplicates().sort_values(ascending=False)
-        # Start from base clusters
-        clusters = sdf[sdf["cluster_level"] == levels.max()].to_dict(orient="records")
-        for i, x in enumerate(clusters, start=cluster_id):
-            x["id"] = i
-        for level in levels[1:]:
-            parent_id = cluster_id + len(clusters)
-            new = sdf[sdf["cluster_level"] == level]
-            # Old cluster is a child if:
-            # - not already assigned to a parent
-            # - capacity not duplicated in current cluster level
-            children = [
-                x
-                for x in clusters
-                if not x.get("parent_id") and (x[by] != new[by]).all()
-            ]
-            if len(children) != 2:
-                raise ValueError(
-                    f"Found {len(children)} children for level {level} in metro_id {metro}"
-                )
-            for x in children:
-                x["parent_id"] = parent_id
-            # New cluster is a parent if:
-            # - capacity not present in previous cluster level
-            is_parent = ~new[by].isin(sdf[sdf["cluster_level"] == level + 1][by])
-            if sum(is_parent) == 1:
-                parent = new[is_parent].iloc[0].to_dict()
-                parent["id"] = parent_id
-            else:
-                raise ValueError(
-                    f"Found {sum(is_parent)} parents at level {level} in metro_id {metro}"
-                )
-            clusters.append(parent)
-        all_clusters.extend(clusters)
-        cluster_id += len(clusters)
-    return pd.DataFrame(all_clusters).set_index("id", drop=False)
+    # cluster_id = 1
+    # all_clusters = []
+    # for metro in df["metro_id"].unique():
+    #     sdf = df[df["metro_id"] == metro]
+    #     levels = sdf["cluster_level"].drop_duplicates().sort_values(ascending=False)
+    #     # Start from base clusters
+    #     clusters = sdf[sdf["cluster_level"] == levels.max()].to_dict(orient="records")
+    #     for i, x in enumerate(clusters, start=cluster_id):
+    #         x["id"] = i
+    #     for level in levels[1:]:
+    #         parent_id = cluster_id + len(clusters)
+    #         new = sdf[sdf["cluster_level"] == level]
+    #         # Old cluster is a child if:
+    #         # - not already assigned to a parent
+    #         # - capacity not duplicated in current cluster level
+    #         children = [
+    #             x
+    #             for x in clusters
+    #             if not x.get("parent_id") and (x[by] != new[by]).all()
+    #         ]
+    #         if len(children) != 2:
+    #             raise ValueError(
+    #                 f"Found {len(children)} children for level {level} in metro_id {metro}"
+    #             )
+    #         for x in children:
+    #             x["parent_id"] = parent_id
+    #         # New cluster is a parent if:
+    #         # - capacity not present in previous cluster level
+    #         is_parent = ~new[by].isin(sdf[sdf["cluster_level"] == level + 1][by])
+    #         if sum(is_parent) == 1:
+    #             parent = new[is_parent].iloc[0].to_dict()
+    #             parent["id"] = parent_id
+    #         else:
+    #             raise ValueError(
+    #                 f"Found {sum(is_parent)} parents at level {level} in metro_id {metro}"
+    #             )
+    #         clusters.append(parent)
+    #     all_clusters.extend(clusters)
+    #     cluster_id += len(clusters)
+    # return pd.DataFrame(all_clusters).set_index("id", drop=False)
+    return df
 
 
 def format_profiles_inplace(df):
