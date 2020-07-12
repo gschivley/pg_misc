@@ -79,7 +79,7 @@ def format_metadata(df, cap_multiplier=None, by="mw"):
     #     all_clusters.extend(clusters)
     #     cluster_id += len(clusters)
     # return pd.DataFrame(all_clusters).set_index("id", drop=False)
-    return df
+    return df.set_index("id", drop=False)
 
 
 def format_profiles_inplace(df):
