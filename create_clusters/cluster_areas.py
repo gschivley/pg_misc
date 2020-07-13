@@ -32,14 +32,14 @@ VCE_SOLAR_PATH = VCE_DATA_PATH / "PRINCETON-Solar-Data-2012"
 def snake(s: str) -> str:
     """
     Convert variable name to snake case.
-    
+
     Example:
         >>> snake('Area')
         'area'
         >>> snake('turbineType')
         'turbine_type'
-        >>> snake('GW')
-        'gw'
+        >>> snake('MW')
+        'mw'
         >>> snake('IPM_Region')
         'ipm_region'
         >>> snake('d_coast_sub_161kVplus_miles')
@@ -125,7 +125,7 @@ def load_gen_profiles(site_list, resource_type, variable, scenario):
         resource = "SolarPV"
         resource_path = VCE_SOLAR_PATH
 
-    fn = f"{scenario}_{resource_type}_site_profiles.parquet"
+    fn = f"wecc_{scenario}_{resource_type}_site_profiles.parquet"
     if Path(fn).exists():
         logger.info("Profiles already saved as parquet file")
         df = pd.read_parquet(fn)
@@ -189,12 +189,12 @@ def make_clusters_tidy(cluster_df, additional_cluster_cols=[]):
         "tx_miles",
         "interconnect_annuity",
         "m_popden",
-        "gw",
+        "mw",
     ]
     keep_cols = [col for col in keep_cols if col in cluster_df.columns]
     id_vars = (
         additional_cluster_cols
-        + ["ipm_region", "cbsa_id", "cpa_id", "site", "lcoe", "area",]
+        + ["ipm_region", "metro_id", "cpa_id", "site", "lcoe", "area",]
         + keep_cols
     )
 
@@ -219,11 +219,11 @@ def make_cluster_metadata(
     # resource_type,
     # resource_mw_km2,
     relative_rmse_filter=0.025,
-    gw_filter=0.5,
+    mw_filter=0.5,
 ):
     group_cols = [
         "ipm_region",
-        "cbsa_id",
+        "metro_id",
         "cluster_level",
         "cluster",
     ] + additional_group_cols
@@ -233,7 +233,7 @@ def make_cluster_metadata(
     )
     clustered_meta.columns = ["lcoe"]
 
-    sum_cols = ["area", "gw"]
+    sum_cols = ["area", "mw"]
     clustered_meta[sum_cols] = tidy_clustered.groupby(group_cols)[sum_cols].sum()
 
     # if resource_type == "offshorewind":
@@ -242,9 +242,9 @@ def make_cluster_metadata(
 
     avg_std_capacity = (
         clustered_meta.reset_index()
-        .groupby(["cbsa_id", "cluster_level"], as_index=False)["gw"]
+        .groupby(["metro_id", "cluster_level"], as_index=False)["mw"]
         .sum()
-        .groupby("cbsa_id")["gw"]
+        .groupby("metro_id")["mw"]
         .std()
         .mean()
     )
@@ -278,14 +278,14 @@ def make_cluster_metadata(
     clustered_meta["meets_criteria"] = False
     clustered_meta.loc[
         (clustered_meta["relative_rmse"] <= relative_rmse_filter)
-        | (clustered_meta["gw"] <= gw_filter),
+        | (clustered_meta["mw"] <= mw_filter),
         "meets_criteria",
     ] = True
 
     logger.info("Filtering metadata clusters")
     df_list = []
     for _, _df in clustered_meta.groupby(
-        ["ipm_region", "cbsa_id", "cluster_level"] + additional_group_cols
+        ["ipm_region", "metro_id", "cluster_level"] + additional_group_cols
     ):
         if len(_df) > _df["meets_criteria"].sum():
             df_list.append(_df)
@@ -300,7 +300,7 @@ def make_weighted_profiles(
 ):
     group_cols = [
         "ipm_region",
-        "cbsa_id",
+        "metro_id",
         "cluster_level",
         "cluster",
     ] + additional_group_cols
@@ -337,7 +337,7 @@ def make_weighted_profiles(
     logger.info("Sort tidy profiles")
     sort_cols = additional_group_cols + [
         "ipm_region",
-        "cbsa_id",
+        "metro_id",
         "cluster_level",
         "cluster",
         "hour",
@@ -371,11 +371,11 @@ def set_final_spur_columns(cpa_lcoe, resource_type):
 def set_cpa_capacity(cpa_lcoe, resource_type, resource_density):
 
     if resource_type == "offshorewind":
-        cpa_lcoe["gw"] = (
-            cpa_lcoe["area"] * cpa_lcoe["turbine_type"].map(resource_density) / 1000
+        cpa_lcoe["mw"] = (
+            cpa_lcoe["area"] * cpa_lcoe["turbine_type"].map(resource_density)
         )
     else:
-        cpa_lcoe["gw"] = cpa_lcoe["area"] * resource_density[resource_type] / 1000
+        cpa_lcoe["mw"] = cpa_lcoe["area"] * resource_density[resource_type]
 
     return cpa_lcoe
 
@@ -384,8 +384,8 @@ def format_metadata(df, by="lcoe"):
     # Initialize sequential unique cluster id
     cluster_id = 1
     all_clusters = []
-    for cbsa in df["cbsa_id"].unique():
-        sdf = df[df["cbsa_id"] == cbsa]
+    for metro in df["metro_id"].unique():
+        sdf = df[df["metro_id"] == metro]
         levels = sdf["cluster_level"].drop_duplicates().sort_values(ascending=False)
         # Start from base clusters
         clusters = sdf[sdf["cluster_level"] == levels.max()].to_dict(orient="records")
@@ -404,7 +404,7 @@ def format_metadata(df, by="lcoe"):
             ]
             if len(children) != 2:
                 raise ValueError(
-                    f"Found {len(children)} children for level {level} in cbsa_id {cbsa}"
+                    f"Found {len(children)} children for level {level} in metro_id {metro}"
                 )
             for x in children:
                 x["parent_id"] = parent_id
@@ -416,7 +416,7 @@ def format_metadata(df, by="lcoe"):
                 parent["id"] = parent_id
             else:
                 raise ValueError(
-                    f"Found {sum(is_parent)} parents at level {level} in cbsa_id {cbsa}"
+                    f"Found {sum(is_parent)} parents at level {level} in metro_id {metro}"
                 )
             clusters.append(parent)
         all_clusters.extend(clusters)
@@ -429,7 +429,7 @@ def main(
     resource_type="solarpv",
     scenario="base",
     relative_rmse_filter: float = 0.025,
-    gw_filter: float = 0.5,
+    mw_filter: float = 0.5,
     create_profiles: bool = True,
     n_jobs: int = -2,
     max_cluster_levels: int = 50,
@@ -451,7 +451,7 @@ def main(
         additional_group_cols = []
 
     if resource_type == "solarpv":
-        gw_filter = 2.5
+        mw_filter = 2.5
 
     cpa_lcoe = (
         load_lcoe_data(lcoe_path)
@@ -463,9 +463,11 @@ def main(
         )
     )
 
+    cpa_lcoe = cpa_lcoe.loc[cpa_lcoe["ipm_region"].str.contains("WEC")]
+
     logger.info("LCOE loaded, calculating cluster labels")
     cpa_lcoe_cluster_labels = cpa_lcoe.groupby(
-        ["ipm_region", "cbsa_id"] + additional_group_cols
+        ["ipm_region", "metro_id"] + additional_group_cols
     ).apply(
         add_cluster_labels, clusters=range(1, max_cluster_levels + 1), lcoe_col="lcoe"
     )
@@ -496,7 +498,7 @@ def main(
             tidy_clustered=tidy_clustered,
             additional_group_cols=additional_group_cols,
             relative_rmse_filter=relative_rmse_filter,
-            gw_filter=gw_filter,
+            mw_filter=mw_filter,
         )
         cols = cluster_meta.index.names
         cluster_meta = cluster_meta.reset_index().pipe(format_metadata)
