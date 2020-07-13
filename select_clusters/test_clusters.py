@@ -31,6 +31,16 @@ SCENARIOS = [
         "max_clusters": 4,
         "cap_multiplier": 0.2,
     },
+    {
+        "region": "CA_S",
+        "ipm_regions": ["WEC_SCE", "WEC_LADW", "WECC_SCE", "WEC_SDGE", "WECC_IID"],
+        "technology": "solarpv",
+        # "turbine_type": "fixed",
+        # "pref_site": 1,
+        "min_capacity": 150000,
+        "max_clusters": 5,
+        "cap_multiplier": 0.2,
+    },
 ]
 
 builder = ClusterBuilder(PATH)
