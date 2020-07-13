@@ -41,6 +41,16 @@ SCENARIOS = [
         "max_clusters": 5,
         "cap_multiplier": 0.2,
     },
+    {
+        "region": "CA_N",
+        "ipm_regions": ["WEC_CALN", "WECC_BANC"],
+        "technology": "offshorewind",
+        "turbine_type": "floating",
+        "pref_site": 1,
+        "min_capacity": 35000,
+        "max_clusters": 3,
+        # "cap_multiplier": 0.2,
+    },
 ]
 
 builder = ClusterBuilder(PATH)
