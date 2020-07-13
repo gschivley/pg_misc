@@ -10,6 +10,7 @@ import shapely
 import logging
 import json
 import re
+import shutil
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -537,6 +538,9 @@ def main(
             )
 
             logger.info("Writing profiles")
+            # Rewriting a partitioned parquet does not rewrite files
+            if os.path.isdir(group["profiles"]):
+                shutil.rmtree(group["profiles"])
             cluster_profiles.drop(columns=additional_group_cols).round(4).to_parquet(
                 group["profiles"], partition_cols=["ipm_region"],
             )
