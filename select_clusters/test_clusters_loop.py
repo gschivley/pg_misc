@@ -50,22 +50,22 @@ SCENARIOS = {
         "CA_N": {
             "ipm_regions": ["WEC_CALN", "WECC_BANC"],
             "max_clusters": 4,
-            "min_capacity": 200,
+            "min_capacity": 200000,
         },
         "CA_S": {
             "ipm_regions": ["WEC_SCE", "WEC_LADW", "WECC_SCE", "WEC_SDGE", "WECC_IID"],
             "max_clusters": 5,
-            "min_capacity": 150,
+            "min_capacity": 150000,
         },
         "WECC_N": {
             "ipm_regions": ["WECC_ID", "WECC_MT", "WECC_NNV", "WECC_UT"],
             "max_clusters": 20,
-            "min_capacity": 250,
+            "min_capacity": 250000,
         },
         "WECC_NMAZ": {
             "ipm_regions": ["WECC_AZ", "WECC_NM", "WECC_SNV",],
             "max_clusters": 15,
-            "min_capacity": 300,
+            "min_capacity": 300000,
         },
         # "WECC_PNW": {
         #     "ipm_regions": [],
@@ -75,29 +75,29 @@ SCENARIOS = {
         "WECC_WYCO": {
             "ipm_regions": ["WECC_WY", "WECC_CO"],
             "max_clusters": 15,
-            "min_capacity": 180,
+            "min_capacity": 180000,
         },
     },
     "OnshoreWind": {
         "CA_N": {
             "ipm_regions": ["WEC_CALN", "WECC_BANC"],
             "max_clusters": 1,
-            "min_capacity": 22,
+            "min_capacity": 22000,
         },
         "CA_S": {
             "ipm_regions": ["WEC_SCE", "WEC_LADW", "WECC_SCE", "WEC_SDGE", "WECC_IID"],
             "max_clusters": 10,
-            "min_capacity": 45,
+            "min_capacity": 45000,
         },
         "WECC_N": {
             "ipm_regions": ["WECC_ID", "WECC_MT", "WECC_NNV", "WECC_UT"],
             "max_clusters": 15,
-            "min_capacity": 100,
+            "min_capacity": 100000,
         },
         "WECC_NMAZ": {
             "ipm_regions": ["WECC_AZ", "WECC_NM", "WECC_SNV"],
             "max_clusters": 15,
-            "min_capacity": 120,
+            "min_capacity": 120000,
         },
         # "WECC_PNW": {
         #     "ipm_regions": [],
@@ -107,19 +107,19 @@ SCENARIOS = {
         "WECC_WYCO": {
             "ipm_regions": ["WECC_WY", "WECC_CO"],
             "max_clusters": 20,
-            "min_capacity": 200,
+            "min_capacity": 200000,
         },
     },
     "OffShoreWind": {
         "CA_N": {
             "ipm_regions": ["WEC_CALN", "WECC_BANC"],
             "max_clusters": 3,
-            "min_capacity": 35,
+            "min_capacity": 35000,
         },
         "WECC_PNW": {
             "ipm_regions": ["WECC_PNW"],
             "max_clusters": 3,
-            "min_capacity": 26,
+            "min_capacity": 26000,
         },
     },
 }
