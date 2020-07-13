@@ -1,4 +1,4 @@
-from clusters import ClusterBuilder, load_metadata, read_parquet
+from clusters import ClusterBuilder
 
 PATH = ".."
 SCENARIOS = [
@@ -23,7 +23,7 @@ SCENARIOS = [
 ]
 
 builder = ClusterBuilder(PATH)
-builder.build_clusters(**SCENARIOS[0])
-builder.build_clusters(**SCENARIOS[1])
+for scenario in SCENARIOS:
+    builder.build_clusters(**scenario)
 builder.get_cluster_metadata()
 builder.get_cluster_profiles()
