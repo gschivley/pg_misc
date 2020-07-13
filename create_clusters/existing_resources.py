@@ -10,6 +10,8 @@ import logging
 
 from powergenome.transmission import haversine
 
+from site_interconnection_costs import ckdnearest
+
 logger = logging.getLogger(__file__)
 logger.setLevel(logging.INFO)
 handler = logging.StreamHandler()
@@ -33,7 +35,7 @@ METRO_VORONOI_PATH = CWD / "large_metro_voronoi.geojson"
 
 def load_vce_grid_points():
     print("Loading VCE grid points")
-    df = pd.read_csv(VCE_DATA_PATH / "PRINCETON-MetaData" / "RUC_LatLonSites.csv")
+    df = pd.read_csv("RUC_LatLonSites.csv")
     df["Site"] = df["Site"].astype(str).str.zfill(6)
 
     return df
@@ -220,30 +222,30 @@ def renorm_solar(df):
     return df
 
 
-def ckdnearest(gdA, gdB):
-    "https://gis.stackexchange.com/a/301935"
-    nA = np.array(list(zip(gdA.Latitude, gdA.Longitude)))
-    nB = np.array(list(zip(gdB["latitude"], gdB["longitude"])))
-    btree = cKDTree(nB)
-    dist, idx = btree.query(nA, k=1)
+# def ckdnearest(gdA, gdB):
+#     "https://gis.stackexchange.com/a/301935"
+#     nA = np.array(list(zip(gdA.Latitude, gdA.Longitude)))
+#     nB = np.array(list(zip(gdB["latitude"], gdB["longitude"])))
+#     btree = cKDTree(nB)
+#     dist, idx = btree.query(nA, k=1)
 
-    gdB.rename(columns={"latitude": "lat2", "longitude": "lon2"}, inplace=True)
+#     gdB.rename(columns={"latitude": "lat2", "longitude": "lon2"}, inplace=True)
 
-    gdf = pd.concat(
-        [
-            gdA.reset_index(drop=True),
-            gdB.loc[idx, gdB.columns != "geometry"].reset_index(drop=True),
-        ],
-        axis=1,
-    )
-    gdf["dist_mile"] = gdf.apply(
-        lambda row: haversine(
-            row["Longitude"], row["Latitude"], row["lon2"], row["lat2"], units="mile"
-        ),
-        axis=1,
-    )
+#     gdf = pd.concat(
+#         [
+#             gdA.reset_index(drop=True),
+#             gdB.loc[idx, gdB.columns != "geometry"].reset_index(drop=True),
+#         ],
+#         axis=1,
+#     )
+#     gdf["dist_mile"] = gdf.apply(
+#         lambda row: haversine(
+#             row["Longitude"], row["Latitude"], row["lon2"], row["lat2"], units="mile"
+#         ),
+#         axis=1,
+#     )
 
-    return gdf
+#     return gdf
 
 
 SOLAR_PROFILE_DICT = {

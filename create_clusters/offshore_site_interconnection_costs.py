@@ -9,8 +9,10 @@ import logging
 from powergenome.params import DATA_PATHS, IPM_SHAPEFILE_PATH, IPM_GEOJSON_PATH
 from powergenome.transmission import haversine
 from powergenome.nrelatb import investment_cost_calculator, fetch_atb_costs
-from powergenome.util import reverse_dict_of_lists, init_pudl_connection
+from powergenome.util import reverse_dict_of_lists, init_pudl_connection, find_centroid
 from powergenome.price_adjustment import inflation_price_adjustment
+
+from site_interconnection_costs import ckdnearest
 
 logger = logging.getLogger(__file__)
 logger.setLevel(logging.INFO)
@@ -186,8 +188,9 @@ def load_cpa_gdf(filepath, target_crs, slope_filter=None, layer=None):
         cpa_gdf = cpa_gdf.reset_index(drop=True)
 
     cpa_gdf = cpa_gdf.to_crs(target_crs)
-    cpa_gdf["Latitude"] = cpa_gdf.centroid.y
-    cpa_gdf["Longitude"] = cpa_gdf.centroid.x
+    centroid = find_centroid(cpa_gdf)
+    cpa_gdf["Latitude"] = centroid.y
+    cpa_gdf["Longitude"] = centroid.x
     cpa_gdf["cpa_id"] = cpa_gdf.index
 
     cpa_gdf["prefSite"] = cpa_gdf["prefSite"].fillna(0)
@@ -235,8 +238,12 @@ def load_atb_capex_wacc():
     offshore_spur_costs = pd.read_csv("atb_offshore_spur_costs.csv", index_col=0)
     offshore_spur_costs = offshore_spur_costs * 1000
     offshore_spur_costs.columns = [str(x) for x in offshore_spur_costs.columns]
-    offshore_fixed_2030_spur = offshore_spur_costs.loc["TRG 3 - Mid", "2030"]
-    offshore_floating_2030_spur = offshore_spur_costs.loc["TRG 10 - Mid", "2030"]
+
+    # Include finance factor of 1.032 from ATB spreadsheet
+    offshore_fixed_2030_spur = offshore_spur_costs.loc["TRG 3 - Mid", "2030"] * 1.032
+    offshore_floating_2030_spur = (
+        offshore_spur_costs.loc["TRG 10 - Mid", "2030"] * 1.032
+    )
 
     offshore_fixed_spur_mw_mile = offshore_fixed_2030_spur / 30 * 1.60934
     offshore_floating_spur_mw_mile = offshore_floating_2030_spur / 30 * 1.60934
@@ -324,30 +331,30 @@ def load_regional_cost_multipliers():
     return regional_cost_multipliers
 
 
-def ckdnearest(gdA, gdB):
-    "https://gis.stackexchange.com/a/301935"
-    nA = np.array(list(zip(gdA.Latitude, gdA.Longitude)))
-    nB = np.array(list(zip(gdB["latitude"], gdB["longitude"])))
-    btree = cKDTree(nB)
-    dist, idx = btree.query(nA, k=1)
+# def ckdnearest(gdA, gdB):
+#     "https://gis.stackexchange.com/a/301935"
+#     nA = np.array(list(zip(gdA.Latitude, gdA.Longitude)))
+#     nB = np.array(list(zip(gdB["latitude"], gdB["longitude"])))
+#     btree = cKDTree(nB)
+#     dist, idx = btree.query(nA, k=1)
 
-    gdB.rename(columns={"latitude": "lat2", "longitude": "lon2"}, inplace=True)
+#     gdB.rename(columns={"latitude": "lat2", "longitude": "lon2"}, inplace=True)
 
-    gdf = pd.concat(
-        [
-            gdA.reset_index(drop=True),
-            gdB.loc[idx, gdB.columns != "geometry"].reset_index(drop=True),
-        ],
-        axis=1,
-    )
-    gdf["dist_mile"] = gdf.apply(
-        lambda row: haversine(
-            row["Longitude"], row["Latitude"], row["lon2"], row["lat2"], units="mile"
-        ),
-        axis=1,
-    )
+#     gdf = pd.concat(
+#         [
+#             gdA.reset_index(drop=True),
+#             gdB.loc[idx, gdB.columns != "geometry"].reset_index(drop=True),
+#         ],
+#         axis=1,
+#     )
+#     gdf["dist_mile"] = gdf.apply(
+#         lambda row: haversine(
+#             row["Longitude"], row["Latitude"], row["lon2"], row["lat2"], units="mile"
+#         ),
+#         axis=1,
+#     )
 
-    return gdf
+#     return gdf
 
 
 def calc_interconnect_costs_lcoe(cpa_gdf, cap_rec_years=20):
@@ -481,6 +488,9 @@ def main():
         cpa_gdf.reset_index(drop=True), metro_voronoi_gdf.reset_index(drop=True)
     )
     cpa_metro = cpa_metro.drop(columns=["lat2", "lon2"])
+    nnv_filter = cpa_metro.loc[cpa_metro.IPM_Region == "WECC_NNV", :].index
+    cpa_metro.loc[nnv_filter, "IPM_Region"] = "WEC_CALN"
+    cpa_metro.loc[nnv_filter, "metro_id"] = "41860"
 
     logger.info("Matching CPAs with VCE sites")
     site_locations = load_site_locations()
@@ -494,7 +504,21 @@ def main():
 
     logger.info("Writing results to file")
 
-    cpa_vce_lcoe.drop(columns=["geometry"]).to_csv("base_offshorewind_lcoe.csv", index=False, float_format='%.5f')
+    # cpa_vce_lcoe.drop(columns=["geometry"]).to_csv("base_offshorewind_lcoe.csv", index=False, float_format='%.5f')
+
+    geodata_cols = [
+        "cpa_id",
+        # "state",
+        "Site",
+        "metro_id",
+        "IPM_Region",
+        "interconnect_annuity",
+        "lcoe",
+        "geometry",
+    ]
+    cpa_vce_lcoe.drop(columns=["geometry"]).to_csv(
+        f"reprojected_base_offshorewind_lcoe.csv"
+    )
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 import numpy as np
 import netCDF4
 import pandas as pd
+import geopandas as gpd
 import scipy.cluster.hierarchy as hac
 from pathlib import Path
 from sklearn.metrics import mean_squared_error
@@ -76,7 +77,12 @@ def cluster_weighted_avg_profile(df, site_profiles, cluster_index, weight_col="A
     return {cluster_index: cluster_wm}
 
 
-def load_gen_profiles(site_list, resource_type, variable, scenario):
+def load_gen_profiles(site_list, resource_type, variable, scenario, region_filter=None):
+    if region_filter:
+        region_filter = region_filter + "_"
+    else:
+        region_filter = ""
+
     if resource_type.lower() == "wind":
         resource = "Wind"
         resource_path = VCE_WIND_PATH
@@ -87,10 +93,14 @@ def load_gen_profiles(site_list, resource_type, variable, scenario):
         resource = "SolarPV"
         resource_path = VCE_SOLAR_PATH
 
-    fn = f"{scenario}_{resource_type}_site_profiles.parquet"
+    fn = f"{region_filter}{scenario}_{resource_type}_site_profiles.parquet"
     if Path(fn).exists():
         logger.info("Profiles already saved as parquet file")
         df = pd.read_parquet(fn)
+        logger.info("Downcasting data")
+        for col in df.columns:
+            df[col] = pd.to_numeric(df[col], downcast="float")
+        logger.info("Downcasting complete")
 
     else:
         logger.info("Loading all profiles from .nc4")
@@ -98,7 +108,7 @@ def load_gen_profiles(site_list, resource_type, variable, scenario):
         for s in site_list:
             fpath = f"Site_{s}_{resource}.nc4"
             site_data = netCDF4.Dataset(resource_path / fpath)
-            gen_profile = np.array(site_data[variable])
+            gen_profile = np.array(site_data[variable]).astype(np.float32)
             site_profiles[s] = gen_profile
 
         df = pd.DataFrame(site_profiles)
@@ -137,6 +147,8 @@ def wa_rmse(df, lcoe_col, weight_col="Area"):
 
 def load_lcoe_data(path):
     cpa_lcoe = pd.read_csv(path, dtype={"Site": str, "metro_id": str})
+    # cpa_lcoe = gpd.read_parquet(path)
+    # cpa_lcoe["Site"] = cpa_lcoe["Site"].astype(str).str.zfill(6)
 
     return cpa_lcoe
 
@@ -155,6 +167,7 @@ def make_clusters_tidy(cluster_df, additional_cluster_cols=[]):
         "m_popden",
         "MW",
         "state",
+        "id",
     ]
     keep_cols = [col for col in keep_cols if col in cluster_df.columns]
     id_vars = (
@@ -179,10 +192,7 @@ def make_clusters_tidy(cluster_df, additional_cluster_cols=[]):
 
 
 def make_cluster_metadata(
-    tidy_clustered,
-    additional_group_cols=[],
-    relative_rmse_filter=0.025,
-    mw_filter=500,
+    tidy_clustered, additional_group_cols=[], relative_rmse_filter=0.025, mw_filter=500,
 ):
     group_cols = [
         "IPM_Region",
@@ -330,13 +340,57 @@ def set_final_spur_columns(cpa_lcoe, resource_type):
 def set_cpa_capacity(cpa_lcoe, resource_type, resource_density):
 
     if resource_type == "offshorewind":
-        cpa_lcoe["MW"] = (
-            cpa_lcoe["Area"] * cpa_lcoe["turbineType"].map(resource_density)
+        cpa_lcoe["MW"] = cpa_lcoe["Area"] * cpa_lcoe["turbineType"].map(
+            resource_density
         )
     else:
         cpa_lcoe["MW"] = cpa_lcoe["Area"] * resource_density[resource_type]
 
     return cpa_lcoe
+
+
+def format_metadata(df, by="lcoe"):
+    # Initialize sequential unique cluster id
+    cluster_id = 1
+    all_clusters = []
+    for metro in df["metro_id"].unique():
+        sdf = df[df["metro_id"] == metro]
+        levels = sdf["cluster_level"].drop_duplicates().sort_values(ascending=False)
+        # Start from base clusters
+        clusters = sdf[sdf["cluster_level"] == levels.max()].to_dict(orient="records")
+        for i, x in enumerate(clusters, start=cluster_id):
+            x["id"] = i
+        for level in levels[1:]:
+            parent_id = cluster_id + len(clusters)
+            new = sdf[sdf["cluster_level"] == level]
+            # Old cluster is a child if:
+            # - not already assigned to a parent
+            # - capacity not duplicated in current cluster level
+            children = [
+                x
+                for x in clusters
+                if not x.get("parent_id") and (x[by] != new[by]).all()
+            ]
+            if len(children) != 2:
+                raise ValueError(
+                    f"Found {len(children)} children for level {level} in metro_id {metro}"
+                )
+            for x in children:
+                x["parent_id"] = parent_id
+            # New cluster is a parent if:
+            # - capacity not present in previous cluster level
+            is_parent = ~new[by].isin(sdf[sdf["cluster_level"] == level + 1][by])
+            if sum(is_parent) == 1:
+                parent = new[is_parent].iloc[0].to_dict()
+                parent["id"] = parent_id
+            else:
+                raise ValueError(
+                    f"Found {sum(is_parent)} parents at level {level} in metro_id {metro}"
+                )
+            clusters.append(parent)
+        all_clusters.extend(clusters)
+        cluster_id += len(clusters)
+    return pd.DataFrame(all_clusters)
 
 
 def main(
@@ -349,7 +403,9 @@ def main(
     write_site_labels: bool = True,
     n_jobs: int = -2,
     max_cluster_levels: int = 50,
+    region_filter=None,
 ):
+
     if isinstance(relative_rmse_filter, str):
         logger.info("Converting 'relative_rmse_filter' from string to float")
         relative_rmse_filter = float(relative_rmse_filter)
@@ -378,6 +434,17 @@ def main(
             resource_density=resource_density,
         )
     )
+    if region_filter:
+        logger.info(f"Regional filter {region_filter} applied.")
+        cpa_lcoe = cpa_lcoe.loc[cpa_lcoe.IPM_Region.str.contains(region_filter), :]
+        region_filter = region_filter + "_"
+    else:
+        region_filter = ""
+
+    if resource_type == "offshorewind":
+        cpa_lcoe = cpa_lcoe.loc[
+            (cpa_lcoe.turbineType == "fixed") & (cpa_lcoe.prefSite == 0), :
+        ]
 
     logger.info("LCOE loaded, calculating cluster labels")
     cpa_lcoe_cluster_labels = cpa_lcoe.groupby(
@@ -398,13 +465,31 @@ def main(
         relative_rmse_filter=relative_rmse_filter,
         mw_filter=mw_filter,
     )
+    cols = cluster_meta.index.names
+    cluster_meta = cluster_meta.reset_index().pipe(format_metadata)
 
     logger.info("Writing metadata.")
     cluster_folder = CWD.parent / "cluster_data"
     cluster_folder.mkdir(exist_ok=True)
     cluster_meta.to_csv(
-        cluster_folder / f"{resource_type}_{scenario}_cluster_metadata.csv",
+        cluster_folder
+        / f"{region_filter}{resource_type}_{scenario}_cluster_metadata.csv",
         float_format="%.4f",
+    )
+
+    # HACK: Use clusters.format_metadata to drop duplicate clusters
+    cluster_meta = cluster_meta.set_index(cols)
+    tidy_clustered = (
+        tidy_clustered.set_index(cols).loc[cluster_meta.index].reset_index()
+    )
+    tidy_clustered = tidy_clustered.merge(
+        cluster_meta.reset_index()[["cluster_level", "cluster", "id"]],
+        on=["cluster_level", "cluster"],
+    )
+    tidy_clustered.to_csv(
+        cluster_folder / f"{region_filter}{resource_type}_{scenario}_site_metadata.csv",
+        float_format="%.4f",
+        index=False,
     )
 
     if create_profiles:
@@ -438,12 +523,14 @@ def main(
         print(cluster_profiles.head())
         if resource_type == "wind":
             cluster_profiles.round(4).to_parquet(
-                cluster_folder / f"{resource_type}_{scenario}_cluster_profiles.parquet",
+                cluster_folder
+                / f"{region_filter}{resource_type}_{scenario}_cluster_profiles.parquet",
                 partition_cols=["IPM_Region"],
             )
         else:
             cluster_profiles.round(4).to_parquet(
-                cluster_folder / f"{resource_type}_{scenario}_cluster_profiles.parquet"
+                cluster_folder
+                / f"{region_filter}{resource_type}_{scenario}_cluster_profiles.parquet"
             )
 
 
