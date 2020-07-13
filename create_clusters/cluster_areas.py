@@ -194,7 +194,7 @@ def make_clusters_tidy(cluster_df, additional_cluster_cols=[]):
     keep_cols = [col for col in keep_cols if col in cluster_df.columns]
     id_vars = (
         additional_cluster_cols
-        + ["ipm_region", "cbsa_id", "cpa_id", "site", "lcoe", "area",]
+        + ["ipm_region", "metro_id", "cpa_id", "site", "lcoe", "area",]
         + keep_cols
     )
 
@@ -223,7 +223,7 @@ def make_cluster_metadata(
 ):
     group_cols = [
         "ipm_region",
-        "cbsa_id",
+        "metro_id",
         "cluster_level",
         "cluster",
     ] + additional_group_cols
@@ -242,9 +242,9 @@ def make_cluster_metadata(
 
     avg_std_capacity = (
         clustered_meta.reset_index()
-        .groupby(["cbsa_id", "cluster_level"], as_index=False)["gw"]
+        .groupby(["metro_id", "cluster_level"], as_index=False)["gw"]
         .sum()
-        .groupby("cbsa_id")["gw"]
+        .groupby("metro_id")["gw"]
         .std()
         .mean()
     )
@@ -285,7 +285,7 @@ def make_cluster_metadata(
     logger.info("Filtering metadata clusters")
     df_list = []
     for _, _df in clustered_meta.groupby(
-        ["ipm_region", "cbsa_id", "cluster_level"] + additional_group_cols
+        ["ipm_region", "metro_id", "cluster_level"] + additional_group_cols
     ):
         if len(_df) > _df["meets_criteria"].sum():
             df_list.append(_df)
@@ -300,7 +300,7 @@ def make_weighted_profiles(
 ):
     group_cols = [
         "ipm_region",
-        "cbsa_id",
+        "metro_id",
         "cluster_level",
         "cluster",
     ] + additional_group_cols
@@ -337,7 +337,7 @@ def make_weighted_profiles(
     logger.info("Sort tidy profiles")
     sort_cols = additional_group_cols + [
         "ipm_region",
-        "cbsa_id",
+        "metro_id",
         "cluster_level",
         "cluster",
         "hour",
@@ -384,8 +384,8 @@ def format_metadata(df, by="lcoe"):
     # Initialize sequential unique cluster id
     cluster_id = 1
     all_clusters = []
-    for cbsa in df["cbsa_id"].unique():
-        sdf = df[df["cbsa_id"] == cbsa]
+    for metro in df["metro_id"].unique():
+        sdf = df[df["metro_id"] == metro]
         levels = sdf["cluster_level"].drop_duplicates().sort_values(ascending=False)
         # Start from base clusters
         clusters = sdf[sdf["cluster_level"] == levels.max()].to_dict(orient="records")
@@ -404,7 +404,7 @@ def format_metadata(df, by="lcoe"):
             ]
             if len(children) != 2:
                 raise ValueError(
-                    f"Found {len(children)} children for level {level} in cbsa_id {cbsa}"
+                    f"Found {len(children)} children for level {level} in metro_id {metro}"
                 )
             for x in children:
                 x["parent_id"] = parent_id
@@ -416,7 +416,7 @@ def format_metadata(df, by="lcoe"):
                 parent["id"] = parent_id
             else:
                 raise ValueError(
-                    f"Found {sum(is_parent)} parents at level {level} in cbsa_id {cbsa}"
+                    f"Found {sum(is_parent)} parents at level {level} in metro_id {metro}"
                 )
             clusters.append(parent)
         all_clusters.extend(clusters)
@@ -465,7 +465,7 @@ def main(
 
     logger.info("LCOE loaded, calculating cluster labels")
     cpa_lcoe_cluster_labels = cpa_lcoe.groupby(
-        ["ipm_region", "cbsa_id"] + additional_group_cols
+        ["ipm_region", "metro_id"] + additional_group_cols
     ).apply(
         add_cluster_labels, clusters=range(1, max_cluster_levels + 1), lcoe_col="lcoe"
     )
