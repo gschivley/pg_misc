@@ -174,7 +174,7 @@ def wa_rmse(df, lcoe_col, weight_col="area"):
 
 
 def load_lcoe_data(path):
-    return pd.read_csv(path, dtype={"Site": str}).pipe(snake_columns)
+    return pd.read_csv(path, dtype={"Site": str, "metro_id": str}).pipe(snake_columns)
 
 
 def make_clusters_tidy(cluster_df, additional_cluster_cols=[]):
