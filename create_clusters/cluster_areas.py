@@ -499,6 +499,7 @@ def main(
             resource_type=resource_type,
             variable=resource_variable[resource_type],
             scenario=scenario,
+            region_filter=region_filter
         )
 
         if resource_type == "solarpv":
