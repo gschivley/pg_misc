@@ -20,7 +20,7 @@ MEANS = [
     "site_metro_spur_miles",
 ]
 SUMS = ["area", "mw"]
-PROFILE_KEYS = ["cbsa_id", "cluster_level", "cluster"]
+PROFILE_KEYS = ["metro_id", "cluster_level", "cluster"]
 HOURS_IN_YEAR = 8784
 
 
@@ -148,7 +148,9 @@ class ClusterBuilder:
         start = 0
         for c in self.clusters:
             df = c["clusters"].reset_index()
-            columns = [x for x in np.unique([WEIGHT] + MEANS + SUMS) if x in df]
+            columns = [x for x in np.unique([WEIGHT] + MEANS + SUMS) if x in df] + [
+                "ids"
+            ]
             n = len(df)
             df = (
                 df[columns]
@@ -193,6 +195,7 @@ class ClusterBuilder:
             column=("region", "Resource", "cluster"),
             value=np.arange(HOURS_IN_YEAR),
         )
+        df.columns = pd.MultiIndex.from_tuples(df.columns)
         return df
 
 
@@ -208,7 +211,7 @@ def load_groups(path: str = ".") -> List[dict]:
 
 def load_metadata(path: str, cap_multiplier: float = None) -> pd.DataFrame:
     """Load resource metadata."""
-    df = pd.read_csv(path)
+    df = pd.read_csv(path, dtype={"metro_id": str})
     if cap_multiplier:
         df["mw"] = df["mw"] * cap_multiplier
     df.set_index("id", drop=False, inplace=True)
@@ -261,7 +264,7 @@ def build_clusters(
         cdf = cdf[:end]
     # Track ids of base clusters through aggregation
     cdf["ids"] = [[x] for x in cdf["id"]]
-    # Aggregate clusters within each metro area (cbsa_id)
+    # Aggregate clusters within each metro area (metro_id)
     while len(cdf) > max_clusters:
         # Sort parents by lowest LCOE distance of children
         diff = lambda x: abs(x.max() - x.min())
@@ -343,9 +346,9 @@ def build_cluster_profiles(
 def _get_base_clusters(df: pd.DataFrame, ipm_regions: Sequence[str]) -> pd.DataFrame:
     return (
         df[df["ipm_region"].isin(ipm_regions)]
-        .groupby("cbsa_id")
+        .groupby("metro_id")
         .apply(lambda g: g[g["cluster_level"] == g["cluster_level"].max()])
-        .reset_index(level=["cbsa_id"], drop=True)
+        .reset_index(level=["metro_id"], drop=True)
     )
 
 
