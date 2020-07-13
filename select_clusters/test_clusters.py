@@ -54,8 +54,8 @@ SCENARIOS = [
 ]
 
 builder = ClusterBuilder(PATH)
-builder.build_clusters(**SCENARIOS[0])
-builder.build_clusters(**SCENARIOS[1])
+for scenario in SCENARIOS:
+    builder.build_clusters(**scenario)
 metadata = builder.get_cluster_metadata()
 profiles = builder.get_cluster_profiles()
 
