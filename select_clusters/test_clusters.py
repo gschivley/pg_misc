@@ -57,7 +57,7 @@ builder = ClusterBuilder(PATH)
 for scenario in SCENARIOS:
     builder.build_clusters(**scenario)
 metadata = builder.get_cluster_metadata()
-profiles = builder.get_cluster_profiles()
+profiles = builder.get_cluster_profiles().round(4)
 
 metadata.to_csv("test_metadata.csv", index=False)
 profiles.to_csv("test_profiles.csv", index=False)
