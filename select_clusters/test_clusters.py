@@ -1,4 +1,4 @@
-from clusters import ClusterBuilder, load_metadata, read_parquet
+from clusters import ClusterBuilder
 
 PATH = "."
 SCENARIOS = [
