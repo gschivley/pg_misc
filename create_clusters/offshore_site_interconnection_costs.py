@@ -520,7 +520,7 @@ def main(
         "geometry",
     ]
     cpa_vce_lcoe.drop(columns=["geometry"]).to_csv(
-        f"{fn_prefix}reprojected_base_offshorewind_lcoe.csv"
+        f"{fn_prefix}base_offshorewind_lcoe.csv"
     )
 
 
