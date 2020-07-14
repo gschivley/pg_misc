@@ -7,6 +7,7 @@ from scipy.spatial import cKDTree
 import netCDF4
 from pathlib import Path
 import logging
+import typer
 
 from powergenome.transmission import haversine
 
@@ -424,10 +425,10 @@ def make_regional_metadata(plant_meta, region_col="IPM_Region"):
     return region_meta
 
 
-def main():
+def main(region_gdf_fn: str = "large_metro_voronoi.geojson", fn_prefix: str = ""):
     output_path = CWD.parent / "existing_renewables"
     output_path.mkdir(exist_ok=True)
-    region_gdf = gpd.read_file(METRO_VORONOI_PATH)
+    region_gdf = gpd.read_file(region_gdf_fn)
 
     plant_locations = load_plant_locations()
     plant_locations["metro_id"] = label_site_region(
@@ -451,8 +452,12 @@ def main():
     region_wind_meta = make_regional_metadata(plant_wind_meta)
     region_solar_meta = make_regional_metadata(plant_solar_meta)
 
-    region_wind_meta.to_csv(output_path / "regional_existing_wind_metadata.csv")
-    region_solar_meta.to_csv(output_path / "regional_existing_solarpv_metadata.csv")
+    region_wind_meta.to_csv(
+        output_path / f"{fn_prefix}regional_existing_wind_metadata.csv"
+    )
+    region_solar_meta.to_csv(
+        output_path / f"{fn_prefix}regional_existing_solarpv_metadata.csv"
+    )
 
     region_wind_profiles = build_regional_profiles(
         plant_wind_profiles, plant_wind_meta, region_col="IPM_Region"
@@ -462,12 +467,12 @@ def main():
     )
 
     region_wind_profiles.to_csv(
-        output_path / "regional_existing_wind_profiles.csv", index=False
+        output_path / f"{fn_prefix}regional_existing_wind_profiles.csv", index=False
     )
     region_solar_profiles.to_csv(
-        output_path / "regional_existing_solarpv_profiles.csv", index=False
+        output_path / f"{fn_prefix}regional_existing_solarpv_profiles.csv", index=False
     )
 
 
 if __name__ == "__main__":
-    main()
+    typer.run(main)
