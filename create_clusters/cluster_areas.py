@@ -126,7 +126,7 @@ def load_gen_profiles(site_list, resource_type, variable, scenario):
         resource_path = VCE_SOLAR_PATH
 
     fn = f"wecc_{scenario}_{resource_type}_site_profiles.parquet"
-    if Path(fn).exists():
+    if Path(fn).exists() and resource_type != "offshorewind":
         logger.info("Profiles already saved as parquet file")
         df = pd.read_parquet(fn)
 
@@ -141,6 +141,7 @@ def load_gen_profiles(site_list, resource_type, variable, scenario):
 
         df = pd.DataFrame(site_profiles)
 
+        if resource_type != "offshorewind":
         logger.info("Saving profiles to parquet")
         df.to_parquet(fn)
 
