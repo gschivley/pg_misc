@@ -12,8 +12,6 @@ from powergenome.transmission import haversine
 
 from site_interconnection_costs import ckdnearest
 
-from site_interconnection_costs import ckdnearest
-
 logger = logging.getLogger(__file__)
 logger.setLevel(logging.INFO)
 handler = logging.StreamHandler()
