@@ -142,8 +142,8 @@ def load_gen_profiles(site_list, resource_type, variable, scenario):
         df = pd.DataFrame(site_profiles)
 
         if resource_type != "offshorewind":
-        logger.info("Saving profiles to parquet")
-        df.to_parquet(fn)
+            logger.info("Saving profiles to parquet")
+            df.to_parquet(fn)
 
     return df.T
 
@@ -493,6 +493,7 @@ def main(
         group_path = f"{basename}_group.json"
         group["metadata"] = f"{basename}_metadata.csv"
         group["profiles"] = f"{basename}_profiles.parquet" if create_profiles else None
+        group["site_metadata"] = f"{basename}_site_metadata.parquet"
 
         logger.info("Making cluster metadata")
         cluster_meta = make_cluster_metadata(
@@ -515,6 +516,14 @@ def main(
         cluster_meta = cluster_meta.set_index(cols)
         tidy_clustered = (
             tidy_clustered.set_index(cols).loc[cluster_meta.index].reset_index()
+        )
+        tidy_clustered.merge(
+            cluster_meta.reset_index()[["cluster_level", "cluster", "id"]],
+            on=["cluster_level", "cluster"],
+        )[["cpa_id", "lcoe", "id", "cluster_level", "cluster"]].to_parquet(
+            group["site_metadata"],
+            # float_format="%.4f",
+            # index=False,
         )
 
         if create_profiles:
