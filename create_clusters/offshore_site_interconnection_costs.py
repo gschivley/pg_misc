@@ -5,12 +5,15 @@ import geopandas as gpd
 from scipy.spatial import cKDTree
 from pathlib import Path
 import logging
+import typer
 
 from powergenome.params import DATA_PATHS, IPM_SHAPEFILE_PATH, IPM_GEOJSON_PATH
 from powergenome.transmission import haversine
 from powergenome.nrelatb import investment_cost_calculator, fetch_atb_costs
-from powergenome.util import reverse_dict_of_lists, init_pudl_connection
+from powergenome.util import reverse_dict_of_lists, init_pudl_connection, find_centroid
 from powergenome.price_adjustment import inflation_price_adjustment
+
+from site_interconnection_costs import ckdnearest
 
 logger = logging.getLogger(__file__)
 logger.setLevel(logging.INFO)
@@ -100,33 +103,33 @@ tx_capex_region_map = {
     "pjm_s": ["PJM_AP", "PJM_ATSI", "PJM_COMD", "PJM_Dom", "PJM_West", "S_C_KY",],
     "pj_pa": ["PJM_PENE", "PJM_WMAC",],
     "pjm_md_nj": ["PJM_EMAC", "PJM_SMAC"],
-    "ny": ["NY_Z_A", "NY_Z_B", "NY_Z_C&E", "NY_Z_D", "NY_Z_F", "NY_Z_G-I",],
+    "ny": ["NY_Z_A", "NY_Z_B", "NY_Z_C&E", "NY_Z_D", "NY_Z_F", "NY_Z_G-I", "NY_Z_J",],
     "tva": ["S_C_TVA",],
     "south": ["S_SOU",],
     "fl": ["FRCC"],
     "vaca": ["S_VACA"],
-    "ne": ["NY_Z_J", "NY_Z_K", "NENG_CT", "NENG_ME", "NENGREST",],
+    "ne": ["NY_Z_K", "NENG_CT", "NENG_ME", "NENGREST",],
 }
 
 rev_region_mapping = reverse_dict_of_lists(tx_capex_region_map)
 
 spur_costs_2013 = {
     "wecc": 3900,
-    "ca": 5200,
+    "ca": 3900 * 2.25,  # According to Reeds docs, CA is 2.25x the rest of WECC
     "tx": 3900,
     "upper_midwest": 3900,
     "lower_midwest": 3800,
-    "miso_s": 5200,
+    "miso_s": 3900 * 2.25,
     "great_lakes": 4100,
-    "pjm_s": 5200,
-    "pj_pa": 5200,
-    "pjm_md_nj": 5200,
-    "ny": 5200,
+    "pjm_s": 3900 * 2.25,
+    "pj_pa": 3900 * 2.25,
+    "pjm_md_nj": 3900 * 2.25,
+    "ny": 3900 * 2.25,
     "tva": 3800,
     "south": 4950,
     "fl": 4100,
     "vaca": 3800,
-    "ne": 5200,
+    "ne": 3900 * 2.25,
 }
 
 spur_costs_2017 = {
@@ -136,7 +139,7 @@ spur_costs_2017 = {
 
 tx_costs_2013 = {
     "wecc": 1350,
-    "ca": 2750,
+    "ca": 1350 * 2.25,  # According to Reeds docs, CA is 2.25x the rest of WECC
     "tx": 1350,
     "upper_midwest": 900,
     "lower_midwest": 900,
@@ -144,13 +147,13 @@ tx_costs_2013 = {
     "great_lakes": 1050,
     "pjm_s": 1350,
     "pj_pa": 1750,
-    "pjm_md_nj": 3500,
-    "ny": 3500,
+    "pjm_md_nj": 4250,  # Bins are $1500 wide - assume max bin is $750 above max
+    "ny": 2750,
     "tva": 1050,
     "south": 1350,
     "fl": 1350,
     "vaca": 900,
-    "ne": 3500,
+    "ne": 4250,  # Bins are $1500 wide - assume max bin is $750 above max
 }
 
 tx_costs_2017 = {
@@ -186,8 +189,9 @@ def load_cpa_gdf(filepath, target_crs, slope_filter=None, layer=None):
         cpa_gdf = cpa_gdf.reset_index(drop=True)
 
     cpa_gdf = cpa_gdf.to_crs(target_crs)
-    cpa_gdf["Latitude"] = cpa_gdf.centroid.y
-    cpa_gdf["Longitude"] = cpa_gdf.centroid.x
+    centroid = find_centroid(cpa_gdf)
+    cpa_gdf["Latitude"] = centroid.y
+    cpa_gdf["Longitude"] = centroid.x
     cpa_gdf["cpa_id"] = cpa_gdf.index
 
     cpa_gdf["prefSite"] = cpa_gdf["prefSite"].fillna(0)
@@ -235,8 +239,12 @@ def load_atb_capex_wacc():
     offshore_spur_costs = pd.read_csv("atb_offshore_spur_costs.csv", index_col=0)
     offshore_spur_costs = offshore_spur_costs * 1000
     offshore_spur_costs.columns = [str(x) for x in offshore_spur_costs.columns]
-    offshore_fixed_2030_spur = offshore_spur_costs.loc["TRG 3 - Mid", "2030"]
-    offshore_floating_2030_spur = offshore_spur_costs.loc["TRG 10 - Mid", "2030"]
+
+    # Include finance factor of 1.032 from ATB spreadsheet
+    offshore_fixed_2030_spur = offshore_spur_costs.loc["TRG 3 - Mid", "2030"] * 1.032
+    offshore_floating_2030_spur = (
+        offshore_spur_costs.loc["TRG 10 - Mid", "2030"] * 1.032
+    )
 
     offshore_fixed_spur_mw_mile = offshore_fixed_2030_spur / 30 * 1.60934
     offshore_floating_spur_mw_mile = offshore_floating_2030_spur / 30 * 1.60934
@@ -324,30 +332,30 @@ def load_regional_cost_multipliers():
     return regional_cost_multipliers
 
 
-def ckdnearest(gdA, gdB):
-    "https://gis.stackexchange.com/a/301935"
-    nA = np.array(list(zip(gdA.Latitude, gdA.Longitude)))
-    nB = np.array(list(zip(gdB["latitude"], gdB["longitude"])))
-    btree = cKDTree(nB)
-    dist, idx = btree.query(nA, k=1)
+# def ckdnearest(gdA, gdB):
+#     "https://gis.stackexchange.com/a/301935"
+#     nA = np.array(list(zip(gdA.Latitude, gdA.Longitude)))
+#     nB = np.array(list(zip(gdB["latitude"], gdB["longitude"])))
+#     btree = cKDTree(nB)
+#     dist, idx = btree.query(nA, k=1)
 
-    gdB.rename(columns={"latitude": "lat2", "longitude": "lon2"}, inplace=True)
+#     gdB.rename(columns={"latitude": "lat2", "longitude": "lon2"}, inplace=True)
 
-    gdf = pd.concat(
-        [
-            gdA.reset_index(drop=True),
-            gdB.loc[idx, gdB.columns != "geometry"].reset_index(drop=True),
-        ],
-        axis=1,
-    )
-    gdf["dist_mile"] = gdf.apply(
-        lambda row: haversine(
-            row["Longitude"], row["Latitude"], row["lon2"], row["lat2"], units="mile"
-        ),
-        axis=1,
-    )
+#     gdf = pd.concat(
+#         [
+#             gdA.reset_index(drop=True),
+#             gdB.loc[idx, gdB.columns != "geometry"].reset_index(drop=True),
+#         ],
+#         axis=1,
+#     )
+#     gdf["dist_mile"] = gdf.apply(
+#         lambda row: haversine(
+#             row["Longitude"], row["Latitude"], row["lon2"], row["lat2"], units="mile"
+#         ),
+#         axis=1,
+#     )
 
-    return gdf
+#     return gdf
 
 
 def calc_interconnect_costs_lcoe(cpa_gdf, cap_rec_years=20):
@@ -461,12 +469,13 @@ def calc_interconnect_costs_lcoe(cpa_gdf, cap_rec_years=20):
     return cpa_gdf_lcoe
 
 
-def main():
+def main(
+    voronoi_gdf_fn: str = "large_metro_voronoi.geojson", fn_prefix: str = "",
+):
     logger.info("Loading states, voronoi, and CPAs")
     us_states = load_us_states_gdf()
 
     metro_voronoi_gdf = gpd.read_file("large_metro_voronoi.geojson")
-    metro_voronoi_gdf = metro_voronoi_gdf.drop(columns=["area_km2", "cbsa_type"])
     cpa_gdf = load_cpa_gdf(
         "20200612_combined_wind_0_01_offshore_supp_CPA_wAtt_US_LCOE.gdb",
         target_crs=us_states.crs,
@@ -482,6 +491,9 @@ def main():
         cpa_gdf.reset_index(drop=True), metro_voronoi_gdf.reset_index(drop=True)
     )
     cpa_metro = cpa_metro.drop(columns=["lat2", "lon2"])
+    nnv_filter = cpa_metro.loc[cpa_metro.IPM_Region == "WECC_NNV", :].index
+    cpa_metro.loc[nnv_filter, "IPM_Region"] = "WEC_CALN"
+    cpa_metro.loc[nnv_filter, "metro_id"] = "41860"
 
     logger.info("Matching CPAs with VCE sites")
     site_locations = load_site_locations()
@@ -495,8 +507,22 @@ def main():
 
     logger.info("Writing results to file")
 
-    cpa_vce_lcoe.to_csv("base_offshorewind_lcoe.csv", index=False)
+    # cpa_vce_lcoe.drop(columns=["geometry"]).to_csv("base_offshorewind_lcoe.csv", index=False, float_format='%.5f')
+
+    geodata_cols = [
+        "cpa_id",
+        # "state",
+        "Site",
+        "metro_id",
+        "IPM_Region",
+        "interconnect_annuity",
+        "lcoe",
+        "geometry",
+    ]
+    cpa_vce_lcoe.drop(columns=["geometry"]).to_csv(
+        f"reprojected_base_offshorewind_lcoe.csv"
+    )
 
 
 if __name__ == "__main__":
-    main()
+    typer.run(main)
