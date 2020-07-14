@@ -33,14 +33,14 @@ VCE_SOLAR_PATH = VCE_DATA_PATH / "PRINCETON-Solar-Data-2012"
 def snake(s: str) -> str:
     """
     Convert variable name to snake case.
-    
+
     Example:
         >>> snake('Area')
         'area'
         >>> snake('turbineType')
         'turbine_type'
-        >>> snake('GW')
-        'gw'
+        >>> snake('MW')
+        'mw'
         >>> snake('IPM_Region')
         'ipm_region'
         >>> snake('d_coast_sub_161kVplus_miles')
@@ -126,8 +126,8 @@ def load_gen_profiles(site_list, resource_type, variable, scenario):
         resource = "SolarPV"
         resource_path = VCE_SOLAR_PATH
 
-    fn = f"{scenario}_{resource_type}_site_profiles.parquet"
-    if Path(fn).exists():
+    fn = f"wecc_{scenario}_{resource_type}_site_profiles.parquet"
+    if Path(fn).exists() and resource_type != "offshorewind":
         logger.info("Profiles already saved as parquet file")
         df = pd.read_parquet(fn)
 
@@ -142,8 +142,9 @@ def load_gen_profiles(site_list, resource_type, variable, scenario):
 
         df = pd.DataFrame(site_profiles)
 
-        logger.info("Saving profiles to parquet")
-        df.to_parquet(fn)
+        if resource_type != "offshorewind":
+            logger.info("Saving profiles to parquet")
+            df.to_parquet(fn)
 
     return df.T
 
@@ -175,7 +176,7 @@ def wa_rmse(df, lcoe_col, weight_col="area"):
 
 
 def load_lcoe_data(path):
-    return pd.read_csv(path, dtype={"Site": str}).pipe(snake_columns)
+    return pd.read_csv(path, dtype={"Site": str, "metro_id": str}).pipe(snake_columns)
 
 
 def make_clusters_tidy(cluster_df, additional_cluster_cols=[]):
@@ -190,7 +191,7 @@ def make_clusters_tidy(cluster_df, additional_cluster_cols=[]):
         "tx_miles",
         "interconnect_annuity",
         "m_popden",
-        "gw",
+        "mw",
     ]
     keep_cols = [col for col in keep_cols if col in cluster_df.columns]
     id_vars = (
@@ -220,7 +221,7 @@ def make_cluster_metadata(
     # resource_type,
     # resource_mw_km2,
     relative_rmse_filter=0.025,
-    gw_filter=0.5,
+    mw_filter=0.5,
 ):
     group_cols = [
         "ipm_region",
@@ -234,7 +235,7 @@ def make_cluster_metadata(
     )
     clustered_meta.columns = ["lcoe"]
 
-    sum_cols = ["area", "gw"]
+    sum_cols = ["area", "mw"]
     clustered_meta[sum_cols] = tidy_clustered.groupby(group_cols)[sum_cols].sum()
 
     # if resource_type == "offshorewind":
@@ -243,9 +244,9 @@ def make_cluster_metadata(
 
     avg_std_capacity = (
         clustered_meta.reset_index()
-        .groupby(["metro_id", "cluster_level"], as_index=False)["gw"]
+        .groupby(["metro_id", "cluster_level"], as_index=False)["mw"]
         .sum()
-        .groupby("metro_id")["gw"]
+        .groupby("metro_id")["mw"]
         .std()
         .mean()
     )
@@ -279,7 +280,7 @@ def make_cluster_metadata(
     clustered_meta["meets_criteria"] = False
     clustered_meta.loc[
         (clustered_meta["relative_rmse"] <= relative_rmse_filter)
-        | (clustered_meta["gw"] <= gw_filter),
+        | (clustered_meta["mw"] <= mw_filter),
         "meets_criteria",
     ] = True
 
@@ -372,11 +373,11 @@ def set_final_spur_columns(cpa_lcoe, resource_type):
 def set_cpa_capacity(cpa_lcoe, resource_type, resource_density):
 
     if resource_type == "offshorewind":
-        cpa_lcoe["gw"] = (
-            cpa_lcoe["area"] * cpa_lcoe["turbine_type"].map(resource_density) / 1000
+        cpa_lcoe["mw"] = (
+            cpa_lcoe["area"] * cpa_lcoe["turbine_type"].map(resource_density)
         )
     else:
-        cpa_lcoe["gw"] = cpa_lcoe["area"] * resource_density[resource_type] / 1000
+        cpa_lcoe["mw"] = cpa_lcoe["area"] * resource_density[resource_type]
 
     return cpa_lcoe
 
@@ -430,7 +431,7 @@ def main(
     resource_type="solarpv",
     scenario="base",
     relative_rmse_filter: float = 0.025,
-    gw_filter: float = 0.5,
+    mw_filter: float = 0.5,
     create_profiles: bool = True,
     n_jobs: int = -2,
     max_cluster_levels: int = 50,
@@ -452,7 +453,7 @@ def main(
         additional_group_cols = []
 
     if resource_type == "solarpv":
-        gw_filter = 2.5
+        mw_filter = 2.5
 
     cpa_lcoe = (
         load_lcoe_data(lcoe_path)
@@ -463,6 +464,8 @@ def main(
             resource_density=resource_density,
         )
     )
+
+    cpa_lcoe = cpa_lcoe.loc[cpa_lcoe["ipm_region"].str.contains("WEC")]
 
     logger.info("LCOE loaded, calculating cluster labels")
     cpa_lcoe_cluster_labels = cpa_lcoe.groupby(
@@ -491,13 +494,14 @@ def main(
         group_path = f"{basename}_group.json"
         group["metadata"] = f"{basename}_metadata.csv"
         group["profiles"] = f"{basename}_profiles.parquet" if create_profiles else None
+        group["site_metadata"] = f"{basename}_site_metadata.parquet"
 
         logger.info("Making cluster metadata")
         cluster_meta = make_cluster_metadata(
             tidy_clustered=tidy_clustered,
             additional_group_cols=additional_group_cols,
             relative_rmse_filter=relative_rmse_filter,
-            gw_filter=gw_filter,
+            mw_filter=mw_filter,
         )
         cols = cluster_meta.index.names
         cluster_meta = cluster_meta.reset_index().pipe(format_metadata)
@@ -513,6 +517,14 @@ def main(
         cluster_meta = cluster_meta.set_index(cols)
         tidy_clustered = (
             tidy_clustered.set_index(cols).loc[cluster_meta.index].reset_index()
+        )
+        tidy_clustered.merge(
+            cluster_meta.reset_index()[["cluster_level", "cluster", "id"]],
+            on=["cluster_level", "cluster"],
+        )[["cpa_id", "lcoe", "id", "cluster_level", "cluster"]].to_parquet(
+            group["site_metadata"],
+            # float_format="%.4f",
+            # index=False,
         )
 
         if create_profiles:

@@ -148,7 +148,9 @@ class ClusterBuilder:
         start = 0
         for c in self.clusters:
             df = c["clusters"].reset_index()
-            columns = [x for x in np.unique([WEIGHT] + MEANS + SUMS) if x in df]
+            columns = [x for x in np.unique([WEIGHT] + MEANS + SUMS) if x in df] + [
+                "ids"
+            ]
             n = len(df)
             df = (
                 df[columns]
@@ -193,6 +195,7 @@ class ClusterBuilder:
             column=("region", "Resource", "cluster"),
             value=np.arange(HOURS_IN_YEAR),
         )
+        df.columns = pd.MultiIndex.from_tuples(df.columns)
         return df
 
 
@@ -208,7 +211,7 @@ def load_groups(path: str = ".") -> List[dict]:
 
 def load_metadata(path: str, cap_multiplier: float = None) -> pd.DataFrame:
     """Load resource metadata."""
-    df = pd.read_csv(path)
+    df = pd.read_csv(path, dtype={"metro_id": str})
     if cap_multiplier:
         df["mw"] = df["mw"] * cap_multiplier
     df.set_index("id", drop=False, inplace=True)
