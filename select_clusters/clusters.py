@@ -189,11 +189,12 @@ class ClusterBuilder:
                 columns.append((c["region"], c["group"]["technology"], start))
                 start += 1
         df = pd.DataFrame(profiles, columns=columns)
+        df = _remove_feb_29(df)
         # Insert hour numbers into first column
         df.insert(
             loc=0,
             column=("region", "Resource", "cluster"),
-            value=np.arange(HOURS_IN_YEAR),
+            value=np.arange(8760) + 1,
         )
         df.columns = pd.MultiIndex.from_tuples(df.columns)
         return df
@@ -364,3 +365,15 @@ def _merge_children(df: pd.DataFrame, **kwargs: Any) -> dict:
 def _flat(*args: Sequence) -> list:
     lists = [x if np.iterable(x) and not isinstance(x, str) else [x] for x in args]
     return list(itertools.chain(*lists))
+
+
+def _remove_feb_29(df, offset=None):
+    df.index = pd.date_range(start="2012-01-01", freq="H", periods=8784)
+
+    df = df.loc[~((df.index.month == 2) & (df.index.day == 29)), :]
+
+    if offset:
+        wrap_rows = df.iloc[:offset, :]
+        df = pd.concat([df.iloc[offset:, :], wrap_rows], ignore_index=True)
+
+    return df.reset_index(drop=True)
