@@ -42,7 +42,9 @@ class ClusterBuilder:
             - `profiles` (np.ndarray): Computed profiles for the resource clusters.
     """
 
-    def __init__(self, path: str = ".") -> None:
+    def __init__(
+        self, path: str = ".", remove_feb_29: bool = True, utc_offset: int = 0
+    ) -> None:
         """
         Initialize with cluster group metadata.
 
@@ -52,6 +54,8 @@ class ClusterBuilder:
         Raises:
             ValueError: Group metadata missing required keys.
         """
+        self.remove_feb_29 = remove_feb_29
+        self.utc_offset = utc_offset
         self.groups = load_groups(path)
         required = ("metadata", "profiles", "technology")
         for g in self.groups:
@@ -189,12 +193,11 @@ class ClusterBuilder:
                 columns.append((c["region"], c["group"]["technology"], start))
                 start += 1
         df = pd.DataFrame(profiles, columns=columns)
-        df = _remove_feb_29(df)
+        if self.remove_feb_29:
+            df = _remove_feb_29(df, offset=self.utc_offset)
         # Insert hour numbers into first column
         df.insert(
-            loc=0,
-            column=("region", "Resource", "cluster"),
-            value=np.arange(8760) + 1,
+            loc=0, column=("region", "Resource", "cluster"), value=np.arange(8760) + 1,
         )
         df.columns = pd.MultiIndex.from_tuples(df.columns)
         return df
@@ -373,7 +376,7 @@ def _remove_feb_29(df, offset=None):
     df = df.loc[~((df.index.month == 2) & (df.index.day == 29)), :]
 
     if offset:
-        wrap_rows = df.iloc[:offset, :]
-        df = pd.concat([df.iloc[offset:, :], wrap_rows], ignore_index=True)
+        wrap_rows = df.iloc[:-offset, :]
+        df = pd.concat([df.iloc[-offset:, :], wrap_rows], ignore_index=True)
 
     return df.reset_index(drop=True)
