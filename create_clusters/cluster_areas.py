@@ -435,6 +435,7 @@ def main(
     create_profiles: bool = True,
     n_jobs: int = -2,
     max_cluster_levels: int = 50,
+    fn_prefix: str = "",
 ):
     if isinstance(relative_rmse_filter, str):
         logger.info("Converting 'relative_rmse_filter' from string to float")
@@ -491,10 +492,12 @@ def main(
         logger.info(f"Processing group {group}")
         group = {"technology": resource_type, "scenario": scenario, **group}
         basename = "_".join([str(v) for v in group.values()])
-        group_path = f"{basename}_group.json"
-        group["metadata"] = f"{basename}_metadata.csv"
-        group["profiles"] = f"{basename}_profiles.parquet" if create_profiles else None
-        group["site_metadata"] = f"{basename}_site_metadata.parquet"
+        group_path = f"{fn_prefix}{basename}_group.json"
+        group["metadata"] = f"{fn_prefix}{basename}_metadata.csv"
+        group["profiles"] = (
+            f"{fn_prefix}{basename}_profiles.parquet" if create_profiles else None
+        )
+        group["site_metadata"] = f"{fn_prefix}{basename}_site_metadata.parquet"
 
         logger.info("Making cluster metadata")
         cluster_meta = make_cluster_metadata(
