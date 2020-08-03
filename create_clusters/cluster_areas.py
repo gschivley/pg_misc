@@ -431,7 +431,7 @@ def main(
     resource_type="solarpv",
     scenario="base",
     relative_rmse_filter: float = 0.025,
-    mw_filter: float = 0.5,
+    mw_filter: float = 100,
     create_profiles: bool = True,
     n_jobs: int = -2,
     max_cluster_levels: int = 50,
@@ -454,7 +454,7 @@ def main(
         additional_group_cols = []
 
     if resource_type == "solarpv":
-        mw_filter = 2.5
+        mw_filter = 250
 
     cpa_lcoe = (
         load_lcoe_data(lcoe_path)
