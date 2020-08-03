@@ -522,9 +522,14 @@ def main(
             tidy_clustered.set_index(cols).loc[cluster_meta.index].reset_index()
         )
         tidy_clustered.merge(
-            cluster_meta.reset_index()[["cluster_level", "cluster", "id"]],
-            on=["cluster_level", "cluster"],
-        )[["cpa_id", "lcoe", "id", "cluster_level", "cluster"]].to_parquet(
+            cluster_meta.reset_index()[
+                ["metro_id", "cluster_level", "cluster", "id"] + additional_group_cols
+            ],
+            on=["metro_id", "cluster_level", "cluster"] + additional_group_cols,
+        )[
+            ["cpa_id", "lcoe", "mw", "id", "metro_id", "cluster_level", "cluster"]
+            + additional_group_cols
+        ].to_parquet(
             group["site_metadata"],
             # float_format="%.4f",
             # index=False,
