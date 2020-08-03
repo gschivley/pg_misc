@@ -6,11 +6,11 @@ from pathlib import Path
 from sklearn.metrics import mean_squared_error
 from joblib import Parallel, delayed
 import typer
-import shapely
 import logging
 import json
 import re
 import shutil
+import os
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
