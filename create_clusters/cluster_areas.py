@@ -116,9 +116,14 @@ def cluster_weighted_avg_profile(df, site_profiles, cluster_index, weight_col="a
     return {cluster_index: cluster_wm}
 
 
-def load_gen_profiles(site_list, resource_type, variable, scenario):
+def load_saved_gen_profiles(fn):
+
+    return pd.read_parquet(fn)
+
+
+def load_new_gen_profiles(site_list, resource_type, variable):
     resource_type = resource_type.lower()
-    scenario = scenario.lower()
+
     if resource_type in ("wind", "offshorewind"):
         resource = "Wind"
         resource_path = VCE_WIND_PATH
@@ -126,21 +131,36 @@ def load_gen_profiles(site_list, resource_type, variable, scenario):
         resource = "SolarPV"
         resource_path = VCE_SOLAR_PATH
 
-    fn = f"wecc_{scenario}_{resource_type}_site_profiles.parquet"
+    site_profiles = {}
+    for s in site_list:
+        fpath = f"Site_{s}_{resource}.nc4"
+        site_data = netCDF4.Dataset(resource_path / fpath)
+        gen_profile = np.asarray(site_data[variable])
+        site_data.close()
+        site_profiles[s] = gen_profile
+
+    return pd.DataFrame(site_profiles)
+
+
+def load_gen_profiles(site_list, resource_type, variable, scenario):
+    resource_type = resource_type.lower()
+    scenario = scenario.lower()
+
+    fn = f"{scenario}_{resource_type}_site_profiles.parquet"
     if Path(fn).exists() and resource_type != "offshorewind":
         logger.info("Profiles already saved as parquet file")
         df = pd.read_parquet(fn)
+        missing_sites = set(site_list) - set(df.columns)
+        if missing_sites:
+            logger.info(f"Reading {len(missing_sites)} missing site profiles from .nc4")
+            new_profiles = load_new_gen_profiles(missing_sites, resource_type, variable)
+            df = pd.concat([df, new_profiles], axis=1)
+            logger.info("Saving updated site profiles to parquet")
+            df.to_parquet(fn)
 
     else:
         logger.info("Loading all profiles from .nc4")
-        site_profiles = {}
-        for s in site_list:
-            fpath = f"Site_{s}_{resource}.nc4"
-            site_data = netCDF4.Dataset(resource_path / fpath)
-            gen_profile = np.array(site_data[variable])
-            site_profiles[s] = gen_profile
-
-        df = pd.DataFrame(site_profiles)
+        df = load_new_gen_profiles(site_list, resource_type, variable)
 
         if resource_type != "offshorewind":
             logger.info("Saving profiles to parquet")
