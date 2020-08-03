@@ -79,7 +79,13 @@ def add_cluster_labels(df, clusters=range(1, 51), lcoe_col="lcoe"):
     Z = hac.linkage(df[lcoe_col].values.reshape(-1, 1), method="ward")
 
     for n in clusters:
-        df[f"cluster_{n}"] = hac.fcluster(Z, n, criterion="maxclust")
+        cluster_labels = hac.fcluster(Z, n, criterion="maxclust")
+
+        if len(np.unique(cluster_labels)) == n:
+            df[f"cluster_{n}"] = cluster_labels
+        else:
+            df[f"cluster_{n}"] = np.nan
+            # break
 
     return df
 
