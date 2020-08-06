@@ -16,8 +16,9 @@ import shapely
 from powergenome.params import DATA_PATHS, IPM_SHAPEFILE_PATH, IPM_GEOJSON_PATH
 from powergenome.transmission import haversine
 from powergenome.nrelatb import investment_cost_calculator, fetch_atb_costs
-from powergenome.util import reverse_dict_of_lists, init_pudl_connection
+from powergenome.util import reverse_dict_of_lists, init_pudl_connection, find_centroid
 from powergenome.price_adjustment import inflation_price_adjustment
+import math
 
 CWD = Path.cwd()
 VCE_DATA_PATH = Path("/Volumes/Macintosh HD 1/Updated_Princeton_Data")
@@ -95,33 +96,33 @@ tx_capex_region_map = {
     "pjm_s": ["PJM_AP", "PJM_ATSI", "PJM_COMD", "PJM_Dom", "PJM_West", "S_C_KY",],
     "pj_pa": ["PJM_PENE", "PJM_WMAC",],
     "pjm_md_nj": ["PJM_EMAC", "PJM_SMAC"],
-    "ny": ["NY_Z_A", "NY_Z_B", "NY_Z_C&E", "NY_Z_D", "NY_Z_F", "NY_Z_G-I",],
+    "ny": ["NY_Z_A", "NY_Z_B", "NY_Z_C&E", "NY_Z_D", "NY_Z_F", "NY_Z_G-I", "NY_Z_J",],
     "tva": ["S_C_TVA",],
     "south": ["S_SOU",],
     "fl": ["FRCC"],
     "vaca": ["S_VACA"],
-    "ne": ["NY_Z_J", "NY_Z_K", "NENG_CT", "NENG_ME", "NENGREST",],
+    "ne": ["NY_Z_K", "NENG_CT", "NENG_ME", "NENGREST",],
 }
 
 rev_region_mapping = reverse_dict_of_lists(tx_capex_region_map)
 
 spur_costs_2013 = {
     "wecc": 3900,
-    "ca": 5200,
+    "ca": 3900 * 2.25,  # According to Reeds docs, CA is 2.25x the rest of WECC
     "tx": 3900,
     "upper_midwest": 3900,
     "lower_midwest": 3800,
-    "miso_s": 5200,
+    "miso_s": 3900 * 2.25,
     "great_lakes": 4100,
-    "pjm_s": 5200,
-    "pj_pa": 5200,
-    "pjm_md_nj": 5200,
-    "ny": 5200,
+    "pjm_s": 3900 * 2.25,
+    "pj_pa": 3900 * 2.25,
+    "pjm_md_nj": 3900 * 2.25,
+    "ny": 3900 * 2.25,
     "tva": 3800,
     "south": 4950,
     "fl": 4100,
     "vaca": 3800,
-    "ne": 5200,
+    "ne": 3900 * 2.25,
 }
 
 spur_costs_2017 = {
@@ -131,7 +132,7 @@ spur_costs_2017 = {
 
 tx_costs_2013 = {
     "wecc": 1350,
-    "ca": 2750,
+    "ca": 1350 * 2.25,  # According to Reeds docs, CA is 2.25x the rest of WECC
     "tx": 1350,
     "upper_midwest": 900,
     "lower_midwest": 900,
@@ -139,13 +140,13 @@ tx_costs_2013 = {
     "great_lakes": 1050,
     "pjm_s": 1350,
     "pj_pa": 1750,
-    "pjm_md_nj": 3500,
-    "ny": 3500,
+    "pjm_md_nj": 4250,  # Bins are $1500 wide - assume max bin is $750 above max
+    "ny": 2750,
     "tva": 1050,
     "south": 1350,
     "fl": 1350,
     "vaca": 900,
-    "ne": 3500,
+    "ne": 4250,  # Bins are $1500 wide - assume max bin is $750 above max
 }
 
 tx_costs_2017 = {
@@ -269,12 +270,10 @@ def load_substations(min_kv=161):
 
 def load_ipm_shapefile(filetype="shp"):
     """Load the IPM shapefile or geojson file.
-
     Parameters
     ----------
     filetype : str, optional
         Either "shp" or "geojson", by default "shp"
-
     Returns
     -------
     GeoDataFrame
@@ -300,19 +299,17 @@ def load_ipm_shapefile(filetype="shp"):
 
 def load_metro_areas_shapefile():
     shpfile_path = (
-        DATA_PATHS["data"]
-        / "metro_areas"
-        / "USA_Core_Based_Statistical_Area"
-        / "USA_Core_Based_Statistical_Area.shp"
+        CWD / "USA_Core_Based_Statistical_Area" / "USA_Core_Based_Statistical_Area.shp"
     )
     metro_areas = gpd.read_file(shpfile_path)
     metro_areas = metro_areas.to_crs(epsg=4326)
 
-    metro_areas["center"] = metro_areas.centroid
+    metro_areas["center"] = find_centroid(metro_areas)
 
     keep_cols = ["CBSA_ID", "NAME", "CBSA_TYPE", "POPULATION", "center", "geometry"]
     # metro_areas["geometry"] = metro_areas["center"]
     metro_areas = metro_areas.loc[:, keep_cols]
+    metro_areas["metro_id"] = metro_areas["CBSA_ID"]
     metro_areas.columns = metro_areas.columns.str.lower()
     metro_areas["state"] = metro_areas["name"].str.split(", ").str[-1]
     metro_areas = metro_areas.loc[~metro_areas.state.isin(["AK", "HI", "PR"]), :]
@@ -344,8 +341,9 @@ def load_cpa_gdf(filepath, target_crs, slope_filter=None, layer=None):
         cpa_gdf = cpa_gdf.reset_index(drop=True)
 
     cpa_gdf = cpa_gdf.to_crs(target_crs)
-    cpa_gdf["Latitude"] = cpa_gdf.centroid.y
-    cpa_gdf["Longitude"] = cpa_gdf.centroid.x
+    centroid = find_centroid(cpa_gdf)
+    cpa_gdf["Latitude"] = centroid.y
+    cpa_gdf["Longitude"] = centroid.x
     cpa_gdf["cpa_id"] = cpa_gdf.index
 
     return cpa_gdf
@@ -381,14 +379,18 @@ def load_site_capacity_factors(site_substation_metro=None):
     site_wind_cf = site_wind_cf.set_index("Site")
 
     if Path("Site_SolarPV_CF.csv").exists():
-        site_solarpv_cf = pd.read_csv("Site_SolarPV_CF.csv", index_col=1)
+        site_solarpv_cf = pd.read_csv("Site_SolarPV_CF.csv", index_col="Site")
         site_solarpv_cf.index = site_solarpv_cf.index.astype(str).str.zfill(6)
     else:
-        site_solarpv_cf = load_gen_profiles(
+        site_solarpv_profiles = load_gen_profiles(
             site_substation_metro["Site"],
             resource="solarPV",
             variable="Axis1_SolarPV_Lat",
         )
+        site_solarpv_cf.name = "Axis1_SolarPV_Lat_CF"
+        site_solarpv_cf.index.name = "Site"
+        site_solarpv_cf = site_solarpv_profiles.mean(axis=1)
+        site_solarpv_cf.to_csv("Site_SolarPV_CF.csv", header=True)
 
     site_cf_dict = {"wind": site_wind_cf, "solarpv": site_solarpv_cf}
 
@@ -425,12 +427,37 @@ def find_largest_cities(
     return largest_cities
 
 
+def cartesian(latitude, longitude, elevation=0):
+    "https://www.timvink.nl/closest-coordinates/"
+    # Convert to radians
+    latitude = latitude * (math.pi / 180)
+    longitude = longitude * (math.pi / 180)
+
+    R = 6371  # 6378137.0 + elevation  # relative to centre of the earth
+    X = R * math.cos(latitude) * math.cos(longitude)
+    Y = R * math.cos(latitude) * math.sin(longitude)
+    Z = R * math.sin(latitude)
+    return (X, Y, Z)
+
+
 def ckdnearest(gdA, gdB):
     "https://gis.stackexchange.com/a/301935"
-    nA = np.array(list(zip(gdA.Latitude, gdA.Longitude)))
-    nB = np.array(list(zip(gdB["latitude"], gdB["longitude"])))
-    btree = cKDTree(nB)
-    dist, idx = btree.query(nA, k=1)
+    coordsA = []
+    for index, row in gdA.iterrows():
+        coordinates = [row["Latitude"], row["Longitude"]]
+        cartesian_coord = cartesian(*coordinates)
+        coordsA.append(cartesian_coord)
+
+    coordsB = []
+    for index, row in gdB.iterrows():
+        coordinates = [row["latitude"], row["longitude"]]
+        cartesian_coord = cartesian(*coordinates)
+        coordsB.append(cartesian_coord)
+
+    # nA = np.array(list(zip(gdA.Latitude, gdA.Longitude)))
+    # nB = np.array(list(zip(gdB["latitude"], gdB["longitude"])))
+    btree = cKDTree(coordsB)
+    dist, idx = btree.query(coordsA, k=1)
 
     gdB.rename(columns={"latitude": "lat2", "longitude": "lon2"}, inplace=True)
 
@@ -476,11 +503,10 @@ def calc_interconnect_distances(
 
     # Substation to nearest metro
     _substation_gdf = substation_gdf.rename(
-            columns={"latitude": "Latitude", "longitude": "Longitude"}
-        )
+        columns={"latitude": "Latitude", "longitude": "Longitude"}
+    )
     nearest_substation_metro = ckdnearest(
-        _substation_gdf,
-        metro_gdf.reset_index(drop=True),
+        _substation_gdf, metro_gdf.reset_index(drop=True),
     )
     nearest_substation_metro = nearest_substation_metro.rename(
         columns={"dist_mile": "substation_metro_tx_miles"}
@@ -530,7 +556,7 @@ def calc_interconnect_distances(
         site_id_col
     ].map(nearest_site_metro.set_index(site_id_col)["site_metro_spur_miles"])
 
-    nan_sites = site_substation_metro.loc[site_substation_metro["cbsa_id"].isnull(), :]
+    nan_sites = site_substation_metro.loc[site_substation_metro["metro_id"].isnull(), :]
     num_nan_sites = len(nan_sites)
     if num_nan_sites > 0:
         egrid_col = "eGrid_to_E"
@@ -542,7 +568,7 @@ def calc_interconnect_distances(
             " and are being removed."
         )
 
-        site_substation_metro = site_substation_metro.dropna(subset=["cbsa_id"])
+        site_substation_metro = site_substation_metro.dropna(subset=["metro_id"])
 
     return site_substation_metro
 
@@ -718,17 +744,21 @@ def calc_interconnect_costs_lcoe(site_substation_metro, resource, cap_rec_years=
     return site_substation_metro_lcoe
 
 
-def main(resource="solarpv", scenario="base"):
+def main(
+    resource="solarpv",
+    scenario="base",
+    voronoi_gdf_fn: str = "large_metro_voronoi.geojson",
+    fn_prefix: str = "",
+):
 
     print("Loading states, voronoi, and CPAs")
     us_states = load_us_states_gdf()
 
-    metro_voronoi_gdf = gpd.read_file("large_metro_voronoi.geojson")
+    metro_voronoi_gdf = gpd.read_file(voronoi_gdf_fn)
 
     cpa_files = {
         "wind": "2020-05-19-OnshoreWind-Base-upto30deg_shp",
         "solarpv": "2020-05-28-SolarBase15deg_CPAs_shapefile",
-        "offshorewind": "combined_wind_0_01_offshore_supp_CPA_wAtt_zeroDepthRemoved_US"
     }
     cpa_slope_filter = {"wind": 19, "solarpv": 10}
     cpa_gdf = load_cpa_gdf(cpa_files[resource], target_crs=us_states.crs)
@@ -740,18 +770,18 @@ def main(resource="solarpv", scenario="base"):
         gdf=us_states, id_col="NAME", lat=cpa_gdf.Latitude, lon=cpa_gdf.Longitude
     )
 
-    cpa_gdf["cbsa_id"] = label_site_region(
+    cpa_gdf["metro_id"] = label_site_region(
         gdf=metro_voronoi_gdf,
-        id_col="cbsa_id",
+        id_col="metro_id",
         lat=cpa_gdf.Latitude,
         lon=cpa_gdf.Longitude,
     )
 
-    cpa_gdf["city"] = cpa_gdf["cbsa_id"].map(
-        metro_voronoi_gdf.set_index("cbsa_id")["name"]
-    )
-    cpa_gdf["IPM_Region"] = cpa_gdf["cbsa_id"].map(
-        metro_voronoi_gdf.set_index("cbsa_id")["IPM_Region"]
+    # cpa_gdf["city"] = cpa_gdf["metro_id"].map(
+    #     metro_voronoi_gdf.set_index("cbsa_id")["name"]
+    # )
+    cpa_gdf["IPM_Region"] = cpa_gdf["metro_id"].map(
+        metro_voronoi_gdf.set_index("metro_id")["IPM_Region"]
     )
 
     site_locations = load_site_locations()
@@ -788,211 +818,9 @@ def main(resource="solarpv", scenario="base"):
     )
 
     print("Writing results to file")
-    cpa_substation_metro_lcoe.to_csv(f"{scenario}_{resource}_lcoe.csv", index=False)
-
-
-# def load_cluster_assignments(path):
-#     df = pd.read_csv(path)
-#     df = df.rename(columns={"Unnamed: 0": "Site"})
-#     df["Site"] = df["Site"].astype(str).str.zfill(6)
-
-#     return df
-
-
-# def calc_cluster_site_spur_line_capex(cluster_assignments, site_locations, metro_areas, substations, spur_cost=3901, high_v_cost=1351):
-
-#     cluster_assignments = pd.merge(
-#         cluster_assignments,
-#         site_locations,
-#         on="Site"
-#     )
-#     _metro_areas = metro_areas.copy()
-#     nearest_metro = ckdnearest(cluster_assignments, _metro_areas)
-#     nearest_metro = nearest_metro.rename(columns={"dist_mile": "total_mile"})
-
-#     _substations = substations.copy()
-#     nearest_substation = ckdnearest(nearest_metro.drop(columns=["lat2", "lon2"]), _substations)
-#     nearest_substation = nearest_substation.rename(columns={"dist_mile": "spur_mile"})
-
-#     nearest_substation["high_v_distance"] = nearest_substation["total_mile"] - nearest_substation["spur_mile"]
-#     nearest_substation.loc[
-#         nearest_substation["high_v_distance"] < 0,
-#         "high_v_distance"
-#     ] = 0
-
-#     nearest_substation.loc[
-#         nearest_substation["spur_mile"] > nearest_substation["total_mile"],
-#         "spur_mile"
-#     ] = nearest_substation["total_mile"]
-
-#     nearest_substation["spur_capex"] = nearest_substation["spur_mile"] * spur_cost
-#     nearest_substation["high_v_capex"] = nearest_substation["high_v_distance"] * high_v_cost
-#     nearest_substation["interconnect_capex"] = nearest_substation["spur_capex"] + nearest_substation["high_v_capex"]
-
-#     assert (nearest_substation[["spur_capex", "high_v_capex"]] < 0).sum().sum() == 0
-
-#     return nearest_substation
-
-
-# site_locations = load_site_locations()
-# ipm_gdf = load_ipm_shapefile()
-# metro_gdf = load_metro_areas_shapefile()
-# largest_metro_gdf = find_largest_cities(metro_gdf, ipm_gdf, min_population=750000)
-
-# test_assignments = load_cluster_assignments("/Users/greg/Documents/CATF/VCE generation profiles/cluster_assignments/cluster_assignments_wind_base3k_WECC_MT.csv")
-
-# substation_gdf = load_substations()
-# substation_gdf
-
-# substation_ipm_gdf = gpd.sjoin(ipm_gdf, substation_gdf, how="left", op="contains").reset_index(drop=True)
-
-# nearest_metros = calc_cluster_site_spur_line_capex(
-#     test_assignments,
-#     site_locations,
-#     largest_metro_gdf,
-#     substation_ipm_gdf
-# )
-# nearest_metros.to_clipboard()
-
-
-# nearest_substation = calc_cluster_site_spur_line_capex(test_assignments, site_locations, substation_ipm_gdf)
-
-# cluster_metro_distance = nearest_metros.groupby("cluster").apply(wa_distance)
-# cluster_metro_distance
-
-# nearest_metros["dist_mile"].describe()
-
-# CA_REGIONS = ["WECC_SCE", "WECC_IID", "WEC_LADW", "WEC_CALN", "WEC_BANC", "WEC_SDGE"]
-
-# WECC_TX_CAPEX = {
-#     "spur": 4181,
-#     "high_v": 1448
-# }
-# CA_TX_CAPEX = {
-#     "spur": 5574,
-#     "high_v": 2948
-# }
-
-
-# def main():
-
-#     site_locations = load_site_locations()
-#     ipm_gdf = load_ipm_shapefile()
-#     metro_gdf = load_metro_areas_shapefile()
-#     largest_metro_gdf = find_largest_cities(metro_gdf, ipm_gdf, min_population=750000)
-
-#     substation_gdf = load_substations()
-#     substation_ipm_gdf = gpd.sjoin(ipm_gdf, substation_gdf, how="left", op="contains").reset_index(drop=True)
-
-#     cluster_assn_files = list((CWD / "cluster_assignments").glob("*WEC*"))
-
-#     solar_base_files = [fn for fn in cluster_assn_files if "solarPV" in fn.name and "base" in fn.name]
-#     wind_base_files = [fn for fn in cluster_assn_files if "wind" in fn.name and "base" in fn.name]
-
-#     interconnect_annuity_folder = CWD / "interconnect_annuity"
-#     interconnect_annuity_folder.mkdir(exist_ok=True)
-
-#     keep_cols = [
-#         "Site",
-#         "cf",
-#         "km2",
-#         "IPM_Region",
-#         "total_mile",
-#         "spur_mile",
-#         "high_v_distance",
-#         "spur_capex",
-#         "high_v_capex",
-#         "interconnect_capex",
-#         "interconnect_annuity"
-#     ]
-
-#     # solar
-#     print("calculating solar")
-#     solar_list = []
-#     for fn in solar_base_files:
-#         name = fn.name
-#         region = name.split(".")[0].split("base_")[-1]
-#         if region in CA_REGIONS:
-#             spur_capex = CA_TX_CAPEX["spur"]
-#             high_v_capex = CA_TX_CAPEX["high_v"]
-#         else:
-#             spur_capex = WECC_TX_CAPEX["spur"]
-#             high_v_capex = WECC_TX_CAPEX["high_v"]
-
-#         assignments = load_cluster_assignments(fn)
-
-#         site_interconnect_capex = calc_cluster_site_spur_line_capex(
-#             assignments,
-#             site_locations,
-#             largest_metro_gdf,
-#             substation_ipm_gdf,
-#             spur_cost=spur_capex,
-#             high_v_cost=high_v_capex
-#         )
-
-#         # cluster_interconnect_capex = site_interconnect_capex.groupby(["IPM_Region", "cluster"], as_index=False).apply(wa_capex)
-
-#         site_interconnect_capex["region"] = region
-
-#         solar_list.append(site_interconnect_capex)
-
-#     solar_cluster_interconnect_df = pd.concat(solar_list)
-#     solar_cluster_interconnect_df["interconnect_annuity"] = investment_cost_calculator(
-#         solar_cluster_interconnect_df["interconnect_capex"],
-#         wacc=0.069,
-#         cap_rec_years=60
-#     ).round(-3)
-#     # return solar_cluster_interconnect_df
-#     # cluster_interconnect_capex = solar_cluster_interconnect_df.groupby(["region", "cluster"]).apply(wa_capex)
-#     solar_cluster_interconnect_df[keep_cols].to_csv(
-#         CWD / "interconnect_annuity" / f"solar_interconnect_annuity_WECC.csv",
-#         index=False
-#     )
-#     # solar_cluster_interconnect_df.to_csv("regional_solar_interconnect_capex.csv")
-
-#     # wind
-#     print("calculating wind")
-#     wind_list = []
-#     for fn in wind_base_files:
-#         name = fn.name
-#         region = name.split(".")[0].split("base3k_")[-1]
-#         if region in CA_REGIONS:
-#             spur_capex = CA_TX_CAPEX["spur"]
-#             high_v_capex = CA_TX_CAPEX["high_v"]
-#         else:
-#             spur_capex = WECC_TX_CAPEX["spur"]
-#             high_v_capex = WECC_TX_CAPEX["high_v"]
-
-#         assignments = load_cluster_assignments(fn)
-
-#         site_interconnect_capex = calc_cluster_site_spur_line_capex(
-#             assignments,
-#             site_locations,
-#             largest_metro_gdf,
-#             substation_ipm_gdf,
-#             spur_cost=spur_capex,
-#             high_v_cost=high_v_capex
-#         )
-
-#         # cluster_interconnect_capex = site_interconnect_capex.groupby(["IPM_Region", "cluster"], as_index=False).apply(wa_capex)
-
-#         site_interconnect_capex["region"] = region
-
-#         wind_list.append(site_interconnect_capex)
-
-#     wind_cluster_interconnect_df = pd.concat(wind_list)
-#     wind_cluster_interconnect_df["interconnect_annuity"] = investment_cost_calculator(
-#         wind_cluster_interconnect_df["interconnect_capex"],
-#         wacc=0.069,
-#         cap_rec_years=60
-#     ).round(-3)
-
-#     wind_cluster_interconnect_df[keep_cols].to_csv(
-#         CWD / "interconnect_annuity" / f"wind_interconnect_annuity_WECC.csv",
-#         index=False
-#     )
-#     # cluster_interconnect_capex = wind_cluster_interconnect_df.groupby(["region", "cluster"]).apply(wa_capex)
-#     # cluster_interconnect_capex.to_csv("regional_wind_interconnect_capex.csv")
+    cpa_substation_metro_lcoe.drop(columns=["geometry"]).to_csv(
+        f"{fn_prefix}{scenario}_{resource}_lcoe.csv", index=False
+    )
 
 
 if __name__ == "__main__":

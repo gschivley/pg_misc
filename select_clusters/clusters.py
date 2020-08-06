@@ -42,7 +42,9 @@ class ClusterBuilder:
             - `profiles` (np.ndarray): Computed profiles for the resource clusters.
     """
 
-    def __init__(self, path: str = ".") -> None:
+    def __init__(
+        self, path: str = ".", remove_feb_29: bool = True, utc_offset: int = 0
+    ) -> None:
         """
         Initialize with cluster group metadata.
 
@@ -52,6 +54,8 @@ class ClusterBuilder:
         Raises:
             ValueError: Group metadata missing required keys.
         """
+        self.remove_feb_29 = remove_feb_29
+        self.utc_offset = utc_offset
         self.groups = load_groups(path)
         required = ("metadata", "profiles", "technology")
         for g in self.groups:
@@ -148,7 +152,9 @@ class ClusterBuilder:
         start = 0
         for c in self.clusters:
             df = c["clusters"].reset_index()
-            columns = [x for x in np.unique([WEIGHT] + MEANS + SUMS) if x in df]
+            columns = [x for x in np.unique([WEIGHT] + MEANS + SUMS) if x in df] + [
+                "ids"
+            ]
             n = len(df)
             df = (
                 df[columns]
@@ -187,12 +193,13 @@ class ClusterBuilder:
                 columns.append((c["region"], c["group"]["technology"], start))
                 start += 1
         df = pd.DataFrame(profiles, columns=columns)
+        if self.remove_feb_29:
+            df = _remove_feb_29(df, offset=self.utc_offset)
         # Insert hour numbers into first column
         df.insert(
-            loc=0,
-            column=("region", "Resource", "cluster"),
-            value=np.arange(HOURS_IN_YEAR),
+            loc=0, column=("region", "Resource", "cluster"), value=np.arange(8760) + 1,
         )
+        df.columns = pd.MultiIndex.from_tuples(df.columns)
         return df
 
 
@@ -208,7 +215,7 @@ def load_groups(path: str = ".") -> List[dict]:
 
 def load_metadata(path: str, cap_multiplier: float = None) -> pd.DataFrame:
     """Load resource metadata."""
-    df = pd.read_csv(path)
+    df = pd.read_csv(path, dtype={"metro_id": str})
     if cap_multiplier:
         df["mw"] = df["mw"] * cap_multiplier
     df.set_index("id", drop=False, inplace=True)
@@ -361,3 +368,15 @@ def _merge_children(df: pd.DataFrame, **kwargs: Any) -> dict:
 def _flat(*args: Sequence) -> list:
     lists = [x if np.iterable(x) and not isinstance(x, str) else [x] for x in args]
     return list(itertools.chain(*lists))
+
+
+def _remove_feb_29(df, offset=None):
+    df.index = pd.date_range(start="2012-01-01", freq="H", periods=8784)
+
+    df = df.loc[~((df.index.month == 2) & (df.index.day == 29)), :]
+
+    if offset:
+        wrap_rows = df.iloc[:-offset, :]
+        df = pd.concat([df.iloc[-offset:, :], wrap_rows], ignore_index=True)
+
+    return df.reset_index(drop=True)
