@@ -220,10 +220,14 @@ def main(
             group["profiles"] = basename + "_profiles.parquet"
         # Write clustered resource metadata
         if profiles_path:
-            clusters = clusters.drop(columns="profile")
-        clusters.to_csv(
-            group["metadata"], float_format="%.4f", index=False,
-        )
+            # clusters = clusters.drop(columns="profile")
+            clusters.drop(columns="profile").to_csv(
+                group["metadata"], float_format="%.4f", index=False,
+            )
+        else:
+            clusters.to_csv(
+                group["metadata"], float_format="%.4f", index=False,
+            )
         # Write site/cluster mappings
         site_cluster.to_json(group["site_cluster"])
         # Write clustered resource profiles
