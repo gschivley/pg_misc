@@ -1,10 +1,8 @@
 """
 This script creates voronoi polygons around major metro centers in the US, with
 modifications of the NYC and Long Island areas to keep them as distinct IPM regions.
-
 To add additional metro areas for a new region, use the --extra-metro-cbsa-ids flag,
 once for each additional cbsa_id to include:
-
 python create_voronoi_polygons.py --extra-metro-cbsa-ids 12100 --extra-metro-cbsa-ids 41540
 """
 
@@ -16,11 +14,16 @@ import shapely.ops
 from shapely.ops import cascaded_union
 from geovoronoi import voronoi_regions_from_coords
 import typer
+import altair as alt
+import gpdvega
 
-from site_interconnection_costs import (
+from cluster_utils import (
     load_ipm_shapefile,
-    load_metro_areas_shapefile,
+    fix_geometries,
 )
+from site_interconnection_costs import load_metro_areas_shapefile
+
+from powergenome.util import find_centroid
 
 import logging
 
@@ -37,14 +40,18 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 
-def load_us_outline():
-    "Load a gdf of US states and return the outline of lower-48"
+def load_us_states():
     us_states = gpd.read_file(
         "https://eric.clst.org/assets/wiki/uploads/Stuff/gz_2010_us_040_00_5m.json"
     )
     drop_states = ["Puerto Rico", "Alaska", "Hawaii"]
     us_states = us_states.loc[~(us_states["NAME"].isin(drop_states)), :]
 
+    return us_states
+
+
+def make_us_outline(us_states):
+    "Return the outline of lower-48"
     us_outline = shapely.ops.unary_union(us_states["geometry"])
 
     return us_outline
@@ -58,13 +65,11 @@ def find_largest_cities(
     extra_metro_cbsa_ids=[],
 ):
     _metro_areas_gdf = metro_areas_gdf.copy()
+    _metro_areas_gdf.loc[:, "metro_geometry"] = _metro_areas_gdf.loc[:, "geometry"]
     _metro_areas_gdf["geometry"] = _metro_areas_gdf["center"]
-    #     metro_ipm_gdf = gpd.sjoin(ipm_gdf, _metro_areas_gdf, how="left", op="intersects")
     metro_ipm_gdf = gpd.sjoin(ipm_gdf, _metro_areas_gdf, how="left", op="contains")
 
     df_list = []
-    # nw_areas["latitude"] = 0
-    # nw_areas["longitude"] = 0
     grouped = metro_ipm_gdf.groupby("IPM_Region", as_index=False)
     for _, _df in grouped:
         #     n_df = _df.nlargest(5, "population")
@@ -90,24 +95,9 @@ def find_largest_cities(
     return largest_cities
 
 
-def main(fn: str = "large_metro_voronoi.geojson", extra_metro_cbsa_ids: List[str] = []):
-
-    logger.info("Loading files")
-    us_outline = load_us_outline()
-    ipm_gdf = load_ipm_shapefile()
-    ipm_gdf["convex_hull"] = ipm_gdf.convex_hull
-    # site_locations = load_site_locations()
-    metro_gdf = load_metro_areas_shapefile()
-
-    logger.info("Finding largest metros")
-    if extra_metro_cbsa_ids:
-        logger.info(f"The extra metros {extra_metro_cbsa_ids} will be included")
-    largest_metros = find_largest_cities(
-        metro_areas_gdf=metro_gdf,
-        ipm_gdf=ipm_gdf,
-        min_population=750000,
-        extra_metro_cbsa_ids=extra_metro_cbsa_ids,
-    )
+def build_voronoi(
+    us_outline, ipm_gdf, largest_metros, extra_metro_cbsa_ids: List[str] = []
+):
 
     logger.info("Making voronoi polygons")
     poly_shapes, pts, poly_to_pt_assignments = voronoi_regions_from_coords(
@@ -163,8 +153,9 @@ def main(fn: str = "large_metro_voronoi.geojson", extra_metro_cbsa_ids: List[str
         )
         .difference(
             shapely.ops.unary_union(
-                ipm_gdf.query("IPM_Region=='NY_Z_G-I'")["geometry"].values[0])
+                ipm_gdf.query("IPM_Region=='NY_Z_G-I'")["geometry"].values[0]
             )
+        )
         .intersection(us_outline)
     )
 
@@ -184,9 +175,140 @@ def main(fn: str = "large_metro_voronoi.geojson", extra_metro_cbsa_ids: List[str
         [metro_voronoi, ny_z_j_k_df], ignore_index=True, sort=False
     )
 
-    logger.info("Writing polygons to file")
-    cols = ["IPM_Region", "geometry", "latitude", "longitude", "metro_id"]
-    final_metro_voronoi[cols].to_file(fn, driver="GeoJSON")
+    # Assign the Sacramento metro to WEC_BANC rather than WEC_CALN
+    final_metro_voronoi.loc[
+        final_metro_voronoi["metro_id"] == "40900", "IPM_Region"
+    ] = "WEC_BANC"
+
+    return final_metro_voronoi
+
+
+def make_interactive_map(ipm_gdf, largest_metros, metro_voronoi, us_states):
+
+    metro_locations = largest_metros[["name", "population", "state"]]
+    metro_locations = gpd.GeoDataFrame(
+        metro_locations, geometry=largest_metros["center"]
+    )
+
+    # states = alt.topo_feature(vga_data.us_10m.url, feature="states")
+
+    _ipm_gdf = fix_geometries(ipm_gdf.copy())
+    _ipm_gdf["geometry"] = _ipm_gdf["geometry"].simplify(0.05)
+    _ipm_gdf["longitude"] = _ipm_gdf.centroid.x
+    _ipm_gdf = _ipm_gdf.drop(columns="convex_hull")
+
+    ipm = (
+        alt.Chart(_ipm_gdf)
+        .mark_geoshape(stroke="white", opacity=0.6)
+        .encode(
+            color=alt.Color(
+                "longitude:N", legend=None, scale=alt.Scale(scheme="category20")
+            )
+        )
+        .project("albersUsa")
+        .properties(width=600, height=400,)
+    )
+
+    metro_locations["longitude"] = metro_locations.geometry.x
+    metro_locations["latitude"] = metro_locations.geometry.y
+
+    metro_data = pd.merge(
+        metro_locations[["longitude", "latitude", "name", "population"]],
+        metro_voronoi[["name", "IPM_Region"]],
+        on="name",
+    )
+
+    cities = (
+        alt.Chart(metro_data)
+        .mark_circle(color="#0c0c0c")
+        .encode(
+            longitude="longitude:Q",
+            latitude="latitude:Q",
+            size=alt.Size(
+                "population:Q",
+                title="Population",
+                scale=alt.Scale(domain=[50000, 20000000], range=[5, 400]),
+            ),
+            tooltip=[
+                alt.Tooltip("name:N", title="MSA Name"),
+                alt.Tooltip("IPM_Region", title="IPM Region"),
+                alt.Tooltip("population:Q", title="Population", format=",.0f"),
+            ],
+        )
+    )
+
+    voronoi = (
+        alt.Chart(metro_voronoi.geometry)
+        .mark_geoshape(fill=None, stroke="black")
+        .encode()
+        .project("albersUsa")
+    )
+
+    states = (
+        alt.Chart(us_states)
+        .mark_geoshape(
+            fill=None,
+            #     fill=None,
+            stroke="#DCDCDC",
+        )
+        .encode()
+        .project("albersUsa")
+    )
+
+    ipm_metro_voronoi = (states + ipm + cities + voronoi).properties(
+        width=1200,
+        height=780,
+        title=[
+            "Voronoi polygons around metro regions of 750k people and larger, "
+            "overlayed on regions from the EPA IPM model.",
+            "The largest metro in an IPM region is included if all metro regions are smaller than 750k.",
+        ],
+    )
+
+    ipm_metro_voronoi.save("us_ipm_metro_voronoi.html")
+
+
+def main(
+    fn: str = "large_metro_voronoi.geojson",
+    extra_metro_cbsa_ids: List[str] = [],
+    make_map: bool = False,
+    use_existing_voronoi: bool = False,
+    save_voronoi: bool = True,
+):
+
+    logger.info("Loading files")
+    us_states = load_us_states()
+    us_outline = make_us_outline(us_states)
+    ipm_gdf = load_ipm_shapefile()
+    ipm_gdf["convex_hull"] = ipm_gdf.convex_hull
+    # site_locations = load_site_locations()
+    metro_gdf = load_metro_areas_shapefile()
+
+    logger.info("Finding largest metros")
+    if extra_metro_cbsa_ids:
+        logger.info(f"The extra metros {extra_metro_cbsa_ids} will be included")
+    largest_metros = find_largest_cities(
+        metro_areas_gdf=metro_gdf,
+        ipm_gdf=ipm_gdf,
+        min_population=750000,
+        extra_metro_cbsa_ids=extra_metro_cbsa_ids,
+    )
+
+    if not use_existing_voronoi:
+        final_metro_voronoi = build_voronoi(
+            us_outline, ipm_gdf, largest_metros, extra_metro_cbsa_ids
+        )
+    else:
+        final_metro_voronoi = gpd.read_file(fn)
+
+    if make_map:
+        logger.info("Making interactive map")
+        make_interactive_map(ipm_gdf, largest_metros, final_metro_voronoi, us_states)
+
+    if save_voronoi:
+        logger.info("Writing polygons to file")
+        cols = ["IPM_Region", "geometry", "latitude", "longitude", "metro_id"]
+        final_metro_voronoi[cols].to_file(fn, driver="GeoJSON")
 
 
 if __name__ == "__main__":
