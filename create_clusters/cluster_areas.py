@@ -4,10 +4,27 @@ import json
 import logging
 import numpy as np
 import pandas as pd
-from powergenome.renewables_clusters import MERGE, build_tree, group_rows, prune_tree
+from pandas.core.frame import DataFrame
+from powergenome.resource_clusters import MERGE, build_tree, group_rows, prune_tree
 import typer
 
 RESOURCE_DENSITY = {"utilitypv": 45, "landbasedwind": 2.7, "fixed": 5, "floating": 8}
+# Fraction of capacity to retain for each CPA based on population density. Based
+# on data used in Princeton Net Zero study.
+RESOURCE_POP_DEN_RETAIN = {
+    "utilitypv": {
+        "pop_den_(0-4]": 1,
+        "pop_den_(4-12]": 1,
+        "pop_den_(12-25]": 1 - 0.8,
+        "pop_den_25+": 1 - 0.8,
+    },
+    "landbasedwind": {
+        "pop_den_(0-4]": 1,
+        "pop_den_(4-12]": 1 - 0.9,
+        "pop_den_(12-25]": 1 - 0.9,
+        "pop_den_25+": 1 - 0.9,
+    },
+}
 GROUP_COLS = {"offshorewind": ["turbine_type", "pref_site"]}
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.INFO)
@@ -76,33 +93,125 @@ def set_capacity(df: pd.DataFrame, technology: str) -> pd.DataFrame:
         density = df["turbine_type"].map(RESOURCE_DENSITY)
     else:
         density = RESOURCE_DENSITY[technology]
+        retain_map = RESOURCE_POP_DEN_RETAIN[technology]
+
     df["mw"] = df["area"] * density
+
+    if "m_popden" in df.columns:
+        pop_den_bins = [0, 4, 12, 25, 200]
+        pop_bin_names = [
+            "pop_den_(0-4]",
+            "pop_den_(4-12]",
+            "pop_den_(12-25]",
+            "pop_den_25+",
+        ]
+        df["pop_density_bin"] = pd.cut(
+            df["m_popden"], pop_den_bins, include_lowest=True, labels=pop_bin_names
+        )
+        df["mw"] *= df["pop_density_bin"].astype(str).map(retain_map)
     return df
 
 
-def load_metadata(path: str, technology: str) -> pd.DataFrame:
-    return (
+def load_cpa_data(path: str, technology: str) -> pd.DataFrame:
+    cpa_data = (
         pd.read_csv(path, dtype={"Site": str, "metro_id": str, "prefSite": bool})
         .pipe(snake_columns)
         .pipe(set_capacity, technology)
         .pipe(set_transmission, technology)
     )
 
+    cpa_data["site"] = cpa_data["site"].str.zfill(6)
+
+    if technology != "offshorewind":
+        cpa_data = cpa_data.rename(
+            columns={
+                "contains_existingwind": "contains_existingfacil",
+                "contains_plannedwind": "contains_plannedfacil",
+            }
+        )
+        cpa_data = cpa_data.query(
+            "contains_existingfacil == 0 & contains_plannedfacil == 0"
+        )
+    return cpa_data
+
 
 def load_profiles(path: str, technology: str) -> pd.DataFrame:
-    df = pd.read_parquet(path)
+    df = pd.read_parquet(path, engine="fastparquet")
     if technology == "utilitypv":
-        # DC capacity is higher than AC capacity
-        df *= 1.3
+        # DC capacity is higher than AC capacity. 1.34 value from NREL ATB 2020
+        df *= 1.34
         # Clip values over 100
         df = df.where(df <= 100, 100)
     # Scale capacity factors from 0-100 to 0-1
     return (df * 0.01).round(4)
 
 
+def build_additional_metadata(
+    cpa_data: pd.DataFrame, site_cluster: pd.DataFrame
+) -> pd.DataFrame:
+    pop_den_bins = [0, 4, 12, 25, 200]
+    pop_bin_names = [
+        "pop_den_(0-4]",
+        "pop_den_(4-12]",
+        "pop_den_(12-25]",
+        "pop_den_25+",
+    ]
+    cpa_data["pop_density_bin"] = pd.cut(
+        cpa_data["m_popden"], pop_den_bins, include_lowest=True, labels=pop_bin_names
+    )
+    pop_den_cats = cpa_data.pop_density_bin.unique().categories
+
+    # landcover_labels = [f"lc_{i}" for i in sorted(metadata.landcover.unique())]
+
+    pop_den_groups_df = pd.DataFrame(
+        index=site_cluster.index.to_list(), columns=pop_den_cats, dtype=np.float32
+    )
+    prime_farmland_df = pd.DataFrame(
+        index=site_cluster.index.to_list(), columns=["prime_farmland"], dtype=np.float32
+    )
+    landcover_df = pd.DataFrame(
+        index=site_cluster.index.to_list(),
+        columns=sorted(cpa_data.landcover.unique()),
+        dtype=np.float32,
+    )
+    hmi_list = []
+    for row in site_cluster.itertuples():
+        cluster_id = row.Index
+        cluster_cpas = row.cpa_id
+        cluster_cpa_data = cpa_data.query("cpa_id in @cluster_cpas")
+        cluster_area = cluster_cpa_data["area"].sum()
+
+        cluster_cpa_popden_grouped = cluster_cpa_data.groupby("pop_density_bin")
+        pop_density_area = cluster_cpa_popden_grouped["area"].sum() / cluster_area
+        pop_den_groups_df.loc[cluster_id, :] = pop_density_area
+
+        cluster_prime_farm_area = (
+            cluster_cpa_data.query("contains_prime_farmland == 1")["area"].sum()
+            / cluster_area
+        )
+        prime_farmland_df.loc[cluster_id, "prime_farmland"] = cluster_prime_farm_area
+
+        landcover_area = (
+            cluster_cpa_data.groupby("landcover")["area"].sum() / cluster_area
+        )
+        landcover_df.loc[cluster_id, :] = landcover_area
+
+        hmi_list.append(
+            (cluster_cpa_data["hmi"] * cluster_cpa_data["area"]).sum() / cluster_area
+        )
+
+    landcover_df.columns = [f"lc_{i}" for i in landcover_df.columns]
+    add_meta_df = pd.concat(
+        [pop_den_groups_df, prime_farmland_df, landcover_df], axis=1
+    )
+    add_meta_df["hmi"] = hmi_list
+
+    return add_meta_df
+
+
 def main(
     technology: str,
-    metadata_path: str,
+    cpa_data_path: str,
     profiles_path: str = None,
     existing: bool = False,
     min_relative_rmse: float = 0.025,
@@ -152,8 +261,9 @@ def main(
         The prefix to use for filenames when saving results, by default "".
     """
     # Load resource metadata
-    LOGGER.info("Loading resource metadata")
-    metadata = load_metadata(metadata_path, technology=technology)
+    LOGGER.info("Loading resource project area data")
+    cpa_data = load_cpa_data(cpa_data_path, technology=technology)
+    cpa_data.index = cpa_data["cpa_id"]
     # Prepare merge parameters
     merge = copy.deepcopy(MERGE)
     if profiles_path is not None:
@@ -164,11 +274,11 @@ def main(
     if GROUP_COLS.get(technology):
         group_cols = GROUP_COLS[technology]
         groups = []
-        for idx, df in metadata.groupby(group_cols, as_index=False):
+        for idx, df in cpa_data.groupby(group_cols, as_index=False):
             group = {key: value for key, value in zip(group_cols, idx)}
             groups.append((group, df.drop(columns=group_cols)))
     else:
-        groups = [({}, metadata)]
+        groups = [({}, cpa_data)]
     # Process each group in series
     for group, df in groups:
         LOGGER.info(f"Processing resource group: {group}")
@@ -190,7 +300,15 @@ def main(
                 rmse = np.sqrt(np.sum(weights * (cluster["lcoe"] - lcoe) ** 2))
                 relative_rmse.append(rmse / lcoe)
             keep = np.greater(relative_rmse, min_relative_rmse) & (tree["mw"] > min_mw)
-            tree = prune_tree(tree, level=tree["level"][keep].max())
+            # from IPython import embed
+            # embed()
+            # tree["rmse"] = relative_rmse[keep]
+            if len(tree) > 1:
+                tree = prune_tree(tree, level=tree["level"][keep].max())
+            else:
+                tree["id"] = 0
+                tree["parent_id"] = np.nan
+                tree["level"] = 1
             # Ensure ids are unique across resource group
             tree[["id", "parent_id"]] += i
             i += len(tree)
@@ -205,6 +323,19 @@ def main(
             .rename(columns={"index": "cpa_id"})[["cpa_id", "id"]]
             .set_index("id")
         )
+        df_list = []
+        for row in site_cluster.itertuples():
+            _df = pd.DataFrame(
+                {"cpa_id": row.cpa_id, "id": [row.Index] * len(row.cpa_id)}
+            )
+            #     _df["id"] = idx
+            df_list.append(_df)
+        cluster_assignments = pd.concat(df_list, ignore_index=True, sort=False)
+
+        if technology != "offshorewind":
+            extra_metadata = build_additional_metadata(cpa_data, site_cluster)
+            clusters = pd.concat([clusters, extra_metadata], axis=1)
+
         # Build group metadata
         group = {
             "technology": technology,
@@ -215,21 +346,25 @@ def main(
         basename = fn_prefix + "_".join([str(v) for v in group.values()])
         group_path = basename + "_group.json"
         group["metadata"] = basename + "_metadata.csv"
-        group["site_cluster"] = basename + "_site_cluster.json"
+        group["site_cluster"] = basename + "_site_cluster.csv"
         if profiles_path is not None:
             group["profiles"] = basename + "_profiles.parquet"
         # Write clustered resource metadata
         if profiles_path:
             # clusters = clusters.drop(columns="profile")
             clusters.drop(columns="profile").to_csv(
-                group["metadata"], float_format="%.4f", index=False,
+                group["metadata"],
+                float_format="%.4f",
+                index=False,
             )
         else:
             clusters.to_csv(
-                group["metadata"], float_format="%.4f", index=False,
+                group["metadata"],
+                float_format="%.4f",
+                index=False,
             )
         # Write site/cluster mappings
-        site_cluster.to_json(group["site_cluster"])
+        cluster_assignments.to_csv(group["site_cluster"], index=False)
         # Write clustered resource profiles
         if profiles_path is not None:
             pd.DataFrame(
