@@ -1,4 +1,4 @@
-from typing import List, Union
+from typing import Dict, List, NamedTuple, Union
 import numpy as np
 import rasterio
 import rasterio.features
@@ -14,35 +14,23 @@ from IPython import embed as IP
 import pickle
 
 
-def convert_coordinates(start_points, end_points, dataset_avoid):
+def convert_coordinates(
+    points: gpd.GeoDataFrame, dataset_avoid: rasterio.io.DatasetReader
+) -> gpd.GeoDataFrame:
 
     # transform dataset
     pixel_width, _, originX, _, pixel_height, originY, *args = dataset_avoid.transform
 
-    print("**Converting the X coordinates of start and end points**")
+    print("**Converting the X coordinates**")
     # Convert start and end to coordinate pixel
-    start_points["X"] = start_points.geometry.x
-    start_points["xcoord"] = xcoord2pixelOffset(
-        start_points.X, originX, pixel_width
-    ).round(0)
+    points["X"] = points.geometry.x
+    points["xcoord"] = xcoord2pixelOffset(points.X, originX, pixel_width).round(0)
 
-    end_points["X"] = end_points.geometry.x
-    end_points["xcoord"] = xcoord2pixelOffset(end_points.X, originX, pixel_width).round(
-        0
-    )
+    print("**Converting the Y coordinates**")
+    points["Y"] = points.geometry.y
+    points["ycoord"] = ycoord2pixelOffset(points.Y, originY, pixel_height).round(0)
 
-    print("**Converting the Y coordinates of start and end points**")
-    start_points["Y"] = start_points.geometry.y
-    start_points["ycoord"] = ycoord2pixelOffset(
-        start_points.Y, originY, pixel_height
-    ).round(0)
-
-    end_points["Y"] = end_points.geometry.y
-    end_points["ycoord"] = ycoord2pixelOffset(
-        end_points.Y, originY, pixel_height
-    ).round(0)
-
-    return start_points, end_points
+    return points
 
 
 def xcoord2pixelOffset(x, originX, pixelWidth):
@@ -124,7 +112,20 @@ def calc_path_cost(
     return c * pixel_size
 
 
-def cost_function(dataset_avoid, actual_cost_surface_list, start_points, end_points):
+class CostRoute(NamedTuple):
+    cost: float
+    route: List[tuple]
+    dest_id: Union[str, int]
+
+
+def cost_function(
+    dataset_avoid: rasterio.io.DatasetReader,
+    actual_cost_surface_list: List[np.ndarray],
+    start_points: gpd.GeoDataFrame,
+    start_point_id_col: str,
+    end_points: gpd.GeoDataFrame,
+    end_point_id_col: str,
+) -> Dict[Union[int, str], CostRoute]:
 
     cost_surface_avoid = dataset_avoid.read(1)
 
@@ -140,18 +141,24 @@ def cost_function(dataset_avoid, actual_cost_surface_list, start_points, end_poi
     costs, traceback = mcp_g.find_costs(
         zip(end_points.ycoord.values, end_points.xcoord.values)
     )
+    end_point_lookup = {}
+    for idx, row in end_points.iterrows():
+        end_point_lookup[(row["ycoord"], row["xcoord"])] = row[end_point_id_col]
 
     print("**Saving the list of routes, their actual cost, and **")
     # Save route list with association to CPA (and substations to MSA)
     cost_route = {}
-    for row in start_points.itertuples():
+    for idx, row in start_points.iterrows():
         # Use traceback to create a route ( it shows cell locations in (x,y))
-        _route = mcp_g.traceback((row.ycoord, row.xcoord))
+        _route = mcp_g.traceback((row["ycoord"], row["xcoord"]))
+        end_point_coords = _route[0]
 
         # Calculate cost of the route
         cost = calc_path_cost(
             actual_cost_surface_list, traceback, tb_distance_dict, _route, pixel_width
         )
-        cost_route[row.OBJECTID] = {"cost": cost, "route": _route}
+        cost_route[row[start_point_id_col]] = CostRoute(
+            cost, _route, end_point_lookup[end_point_coords]
+        )
 
     return cost_route

@@ -4,6 +4,7 @@ import numpy as np
 import netCDF4
 import pandas as pd
 import geopandas as gpd
+import rasterio
 import shapely.vectorized
 from scipy.spatial import cKDTree
 from pathlib import Path
@@ -22,6 +23,7 @@ from powergenome.nrelatb import investment_cost_calculator, fetch_atb_costs
 from powergenome.util import reverse_dict_of_lists, init_pudl_connection, find_centroid
 from powergenome.price_adjustment import inflation_price_adjustment
 import math
+from least_cost_path import convert_coordinates, cost_function
 
 CWD = Path.cwd()
 VCE_DATA_PATH = Path("/Volumes/Extreme SSD/princeton_data")
@@ -50,14 +52,7 @@ cost_multiplier_region_map = {
     "PJMW": ["PJM_West", "PJM_AP", "PJM_ATSI"],
     "PJME": ["PJM_WMAC", "PJM_EMAC", "PJM_SMAC", "PJM_PENE", "PJM_NJLand"],
     "SRCE": ["S_C_TVA", "S_C_KY"],
-    "NYUP": [
-        "NY_Z_A",
-        "NY_Z_B",
-        "NY_Z_C&E",
-        "NY_Z_D",
-        "NY_Z_F",
-        "NY_Z_G-I",
-    ],
+    "NYUP": ["NY_Z_A", "NY_Z_B", "NY_Z_C&E", "NY_Z_D", "NY_Z_F", "NY_Z_G-I",],
     "NYCW": ["NY_Z_J", "NY_Z_K"],
     "ISNE": ["NENG_ME", "NENGREST", "NENG_CT"],
     "RMRG": ["WECC_CO"],
@@ -82,19 +77,8 @@ tx_capex_region_map = {
         "WECC_UT",
         "WECC_WY",
     ],
-    "ca": [
-        "WEC_BANC",
-        "WEC_CALN",
-        "WEC_LADW",
-        "WEC_SDGE",
-        "WECC_IID",
-        "WECC_SCE",
-    ],
-    "tx": [
-        "ERC_PHDL",
-        "ERC_REST",
-        "ERC_WEST",
-    ],
+    "ca": ["WEC_BANC", "WEC_CALN", "WEC_LADW", "WEC_SDGE", "WECC_IID", "WECC_SCE",],
+    "tx": ["ERC_PHDL", "ERC_REST", "ERC_WEST",],
     "upper_midwest": [
         "MIS_MAPP",
         "SPP_WAUE",
@@ -104,12 +88,7 @@ tx_capex_region_map = {
         "MIS_IL",
         "MIS_INKY",
     ],
-    "lower_midwest": [
-        "SPP_N",
-        "SPP_WEST",
-        "SPP_SPS",
-        "SPP_NEBR",
-    ],
+    "lower_midwest": ["SPP_N", "SPP_WEST", "SPP_SPS", "SPP_NEBR",],
     "miso_s": [
         "MIS_LA",
         "MIS_WOTA",
@@ -119,46 +98,16 @@ tx_capex_region_map = {
         "S_D_AECI",
         "MIS_D_MS",
     ],
-    "great_lakes": [
-        "MIS_WUMS",
-        "MIS_LMI",
-    ],
-    "pjm_s": [
-        "PJM_AP",
-        "PJM_ATSI",
-        "PJM_COMD",
-        "PJM_Dom",
-        "PJM_West",
-        "S_C_KY",
-    ],
-    "pj_pa": [
-        "PJM_PENE",
-        "PJM_WMAC",
-    ],
+    "great_lakes": ["MIS_WUMS", "MIS_LMI",],
+    "pjm_s": ["PJM_AP", "PJM_ATSI", "PJM_COMD", "PJM_Dom", "PJM_West", "S_C_KY",],
+    "pj_pa": ["PJM_PENE", "PJM_WMAC",],
     "pjm_md_nj": ["PJM_EMAC", "PJM_SMAC", "PJM_NJLand"],
-    "ny": [
-        "NY_Z_A",
-        "NY_Z_B",
-        "NY_Z_C&E",
-        "NY_Z_D",
-        "NY_Z_F",
-        "NY_Z_G-I",
-        "NY_Z_J",
-    ],
-    "tva": [
-        "S_C_TVA",
-    ],
-    "south": [
-        "S_SOU",
-    ],
+    "ny": ["NY_Z_A", "NY_Z_B", "NY_Z_C&E", "NY_Z_D", "NY_Z_F", "NY_Z_G-I", "NY_Z_J",],
+    "tva": ["S_C_TVA",],
+    "south": ["S_SOU",],
     "fl": ["FRCC"],
     "vaca": ["S_VACA"],
-    "ne": [
-        "NY_Z_K",
-        "NENG_CT",
-        "NENG_ME",
-        "NENGREST",
-    ],
+    "ne": ["NY_Z_K", "NENG_CT", "NENG_ME", "NENGREST",],
 }
 
 rev_region_mapping = reverse_dict_of_lists(tx_capex_region_map)
@@ -301,8 +250,7 @@ def load_site_locations(folder=Path.cwd(), as_gdf=True):
             site_locations,
             crs="EPSG:4326",
             geometry=gpd.points_from_xy(
-                site_locations.Longitude,
-                site_locations.Latitude,
+                site_locations.Longitude, site_locations.Latitude,
             ),
         )
 
@@ -613,29 +561,29 @@ def find_largest_cities(
         user_metros = metro_ipm_gdf.query("metro_id in @additional_metros")
         largest_cities = pd.concat([largest_cities, user_metros], ignore_index=True)
 
-    lats = [center.y for center in largest_cities.center]
-    lons = [center.x for center in largest_cities.center]
+    lats = [center.y for center in largest_cities.msa_center]
+    lons = [center.x for center in largest_cities.msa_center]
 
     largest_cities["latitude"] = lats
     largest_cities["longitude"] = lons
 
-    extra_pjm_location_data = {
-        "IPM_Region": ["PJM_NJLand"],
-        "metro_id": ["substation_143941"],
-        "name": ["New Brunswick, NJ"],
-        "state": ["NJ"],
-        "longitude": [-74.48014],
-        "latitude": [40.45829],
-        "center": [Point(-74.48014, 40.45829)],
-    }
+    # extra_pjm_location_data = {
+    #     "IPM_Region": ["PJM_NJLand"],
+    #     "metro_id": ["substation_143941"],
+    #     "name": ["New Brunswick, NJ"],
+    #     "state": ["NJ"],
+    #     "longitude": [-74.48014],
+    #     "latitude": [40.45829],
+    #     "center": [Point(-74.48014, 40.45829)],
+    # }
 
-    largest_cities = largest_cities.append(
-        gpd.GeoDataFrame(
-            extra_pjm_location_data,
-            geometry=[Point(-74.48014, 40.45829)],
-            crs="EPSG:4326",
-        ), ignore_index=True
-    )
+    # largest_cities = largest_cities.append(
+    #     gpd.GeoDataFrame(
+    #         extra_pjm_location_data,
+    #         geometry=[Point(-74.48014, 40.45829)],
+    #         crs="EPSG:4326",
+    #     ), ignore_index=True
+    # )
 
     if remove_ny_z_j:
         largest_cities = largest_cities.loc[
@@ -713,6 +661,44 @@ def label_site_region(gdf, id_col, lat, lon):
         mask[data_mask] = gdf[id_col][n]
 
     return mask
+
+
+def calc_interconnect_cost(
+    cpa_gdf: gpd.GeoDataFrame,
+    substation_gdf: gpd.GeoDataFrame,
+    metro_substations_gdf: gpd.GeoDataFrame,
+    dataset_avoid: rasterio.io.DatasetReader,
+    actual_cost_surface_list: List[np.ndarray],
+):
+    # Convert coordinates in all three geodataframes
+    cpa_gdf = convert_coordinates(cpa_gdf)
+    substation_gdf = convert_coordinates(substation_gdf)
+    metro_substations_gdf = convert_coordinates(metro_substations_gdf)
+
+    # CPA to substation routes
+    cpa_substation_cost_route = cost_function(
+        dataset_avoid,
+        actual_cost_surface_list,
+        start_points=cpa_gdf,
+        end_points=substation_gdf,
+    )
+
+    # Substation to metro destinations routes
+    cpa_substation_cost_route = cost_function(
+        dataset_avoid,
+        actual_cost_surface_list,
+        start_points=substation_gdf,
+        end_points=metro_substations_gdf,
+    )
+
+    # CPA to metro destinations routes
+    cpa_substation_cost_route = cost_function(
+        dataset_avoid,
+        actual_cost_surface_list,
+        start_points=cpa_gdf,
+        end_points=metro_substations_gdf,
+    )
+    pass
 
 
 def calc_interconnect_distances(
